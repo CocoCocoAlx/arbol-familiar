@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#7C4D33" />
+  <title>Árbol Genealógico · Familia Álvarez – Conti</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css?v=6" />
+</head>
+<body>
+  <!-- ========================================================================
+       PANTALLA DE INICIO DE SESIÓN RESPONSIVA (GOOGLE IDENTITY + ROLES)
+       ======================================================================== -->
+  <div id="auth-modal" class="auth-overlay">
+    <div class="auth-card">
+      <div class="auth-header-compact">
+        <div class="auth-crest">🌳</div>
+        <div>
+          <span class="auth-pill">Google Identity · Privado</span>
+          <h1>Familia Álvarez – Conti</h1>
+        </div>
+      </div>
+
+      <p class="auth-desc">
+        Lienzo genealógico privado. El <strong>Propietario</strong> y los <strong>Co-editores</strong> pueden editar y subir archivos a Drive; el resto ingresa en <strong>Modo Lectura</strong>.
+      </p>
+
+      <div class="auth-options">
+        <label class="auth-label" for="auth-email-select">Cuenta de Google:</label>
+        <select id="auth-email-select" class="auth-select">
+          <option value="martin.alvarez@gmail.com">👑 martin.alvarez@gmail.com (Propietario)</option>
+          <option value="elena.conti@gmail.com">✍️ elena.conti@gmail.com (Co-editora)</option>
+          <option value="lucia.alvarez@gmail.com">👁️ lucia.alvarez@gmail.com (Solo Lectura)</option>
+          <option value="roberto.alvarez@gmail.com">👁️ roberto.alvarez@gmail.com (Solo Lectura)</option>
+          <option value="desconocido@gmail.com">⛔ desconocido@gmail.com (No autorizado)</option>
+        </select>
+
+        <button id="btn-google-login" class="btn-google">
+          <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18">
+            <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"/>
+            <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"/>
+            <path fill="#FBBC05" d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"/>
+            <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.8C3.5 21.4 7.4 24 12 24z"/>
+          </svg>
+          <span>Continuar con Google</span>
+        </button>
+
+        <div id="auth-error" class="auth-error hidden">
+          ⚠️ Esta cuenta no figura en la Lista Blanca familiar. Solicita acceso al propietario.
+        </div>
+      </div>
+
+      <div class="auth-footer-badges">
+        <span>👑 Co-editores</span>
+        <span>☁️ Google Drive + YouTube</span>
+        <span>📱 Táctil</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       BARRA SUPERIOR ULTRACOMPACTA (1 SOLA FILA EN MÓVIL Y ESCRITORIO)
+       ======================================================================== -->
+  <header class="topbar">
+    <!-- Botón Menú Hamburguesa + Título corto -->
+    <div class="topbar-left">
+      <button id="btn-open-sidebar" class="icon-btn hamburger-btn" aria-label="Abrir menú de configuración" title="Menú, Ramas y Configuración">
+        ☰
+        <span id="hamburger-badge" class="floating-dot hidden"></span>
+      </button>
+      <div class="brand-compact" id="btn-brand-center" title="Toca para encuadrar el árbol">
+        <span class="brand-title-short">Álvarez – Conti</span>
+        <span class="brand-meta-short">
+          <span id="member-count-badge">12</span> · <span id="role-status-badge">👑</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Buscador siempre visible y accesible en celular -->
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input
+        type="text"
+        id="search-input"
+        placeholder="Buscar familiar..."
+        autocomplete="off"
+      />
+      <button id="btn-clear-search" class="search-clear-btn hidden" aria-label="Limpiar búsqueda">✕</button>
+      <div id="search-results" class="search-dropdown hidden"></div>
+    </div>
+
+    <!-- Acciones rápidas por íconos a la derecha -->
+    <div class="topbar-right">
+      <div class="view-toggle" role="group" aria-label="Cambiar vista">
+        <button id="btn-view-canvas" class="view-btn active" title="Vista Lienzo Interactivo">🗺️</button>
+        <button id="btn-view-list" class="view-btn" title="Vista Lista por Generación">📱</button>
+      </div>
+
+      <div id="editor-quick-icons" class="editor-quick-icons">
+        <button id="btn-quick-add-member" class="icon-btn primary-icon-btn" title="Agregar nuevo familiar">👤+</button>
+        <button id="btn-quick-upload" class="icon-btn secondary-icon-btn" title="Subir foto, carta o video a Drive">📤</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       PANEL LATERAL IZQUIERDO DESPLEGABLE (MENÚ HAMBURGUESA ☰)
+       ======================================================================== -->
+  <div id="sidebar-backdrop" class="drawer-backdrop hidden"></div>
+  <aside id="sidebar-menu" class="sidebar-drawer hidden" aria-label="Menú principal y configuración">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <span class="sidebar-crest">🌳</span>
+        <div>
+          <div class="sidebar-title">Archivo Álvarez – Conti</div>
+          <div class="sidebar-subtitle">Configuración y Herramientas</div>
+        </div>
+      </div>
+      <button id="btn-close-sidebar" class="icon-btn" aria-label="Cerrar menú">✕</button>
+    </div>
+
+    <div class="sidebar-body">
+      <!-- Tarjeta de sesión activa y cambio rápido de rol -->
+      <div class="sidebar-section user-session-box">
+        <div class="sidebar-section-label">Sesión de Google Activa</div>
+        <div class="active-user-row" id="user-chip" title="Toca para abrir pantalla de acceso">
+          <span class="user-dot"></span>
+          <span id="user-role-tag" class="user-role-tag">👑 Propietario</span>
+          <span id="user-email-label" class="user-email-trunc">martin.alvarez@gmail.com</span>
+        </div>
+        <label class="sidebar-QuickSwitch-label" for="sidebar-role-switcher">Cambiar cuenta/rol de prueba:</label>
+        <select id="sidebar-role-switcher" class="auth-select compact-select"></select>
+      </div>
+
+      <!-- Filtros de Ramas (100% accesibles en móvil) -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">🌿 Filtrar Ramas del Árbol</div>
+        <div class="sidebar-filter-list" role="group">
+          <button class="sidebar-filter-btn active" data-filter="all">
+            <span>🌳 Todos los familiares</span>
+          </button>
+          <button class="sidebar-filter-btn" data-filter="paterna">
+            <span>🟦 Rama Paterna (Álvarez – Méndez)</span>
+          </button>
+          <button class="sidebar-filter-btn" data-filter="materna">
+            <span>🟩 Rama Materna (Conti – Valdés)</span>
+          </button>
+          <button class="sidebar-filter-btn" data-filter="letters">
+            <span>✉️ Con Cartas Manuscritas y Voz</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Herramientas de Edición (solo Propietario y Co-editores) -->
+      <div id="editor-actions-group" class="sidebar-section">
+        <div class="sidebar-section-label">🛠️ Edición del Lienzo y Google Drive</div>
+        <div class="sidebar-action-grid">
+          <button id="btn-new-member" class="sidebar-action-btn primary">
+            <span class="sa-icon">👤+</span>
+            <span>Agregar Pariente</span>
+          </button>
+          <button id="btn-open-upload" class="sidebar-action-btn secondary">
+            <span class="sa-icon">📤</span>
+            <span>Subir a Drive / YT</span>
+          </button>
+          <button id="btn-reset-layout" class="sidebar-action-btn">
+            <span class="sa-icon">↺</span>
+            <span>Ordenar Tablero</span>
+          </button>
+          <button id="btn-sidebar-toggle-drag" class="sidebar-action-btn">
+            <span class="sa-icon" id="sidebar-drag-icon">✋</span>
+            <span id="sidebar-drag-label">Modo: Mover Mapa</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Administración, Validaciones e Historial -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">⚙️ Administración y Seguridad</div>
+        <div class="sidebar-menu-links">
+          <button id="btn-open-approvals" class="sidebar-link-btn">
+            <span>⚖️ Validación de Decisiones</span>
+            <span id="approvals-count-badge" class="tab-badge">0</span>
+          </button>
+          <button id="btn-open-history" class="sidebar-link-btn">
+            <span>🕒 Historial de Modificaciones</span>
+            <span class="sa-arrow">›</span>
+          </button>
+          <button id="btn-open-permissions" class="sidebar-link-btn">
+            <span>🔐 Gestión de Usuarios y Co-editores</span>
+            <span class="sa-arrow">›</span>
+          </button>
+          <button id="btn-open-auth-modal" class="sidebar-link-btn">
+            <span>🔄 Pantalla de Inicio de Sesión</span>
+            <span class="sa-arrow">›</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========================================================================
+       LIENZO INFINITO INTERACTIVO (PANNING TÁCTIL DESBLOQUEADO + PINCH ZOOM)
+       ======================================================================== -->
+  <main id="canvas-viewport" class="canvas-viewport">
+    <div id="canvas-world" class="canvas-world">
+      <!-- Bandas de Generación Dinámicas -->
+      <div id="gen-bands-layer"></div>
+
+      <!-- Líneas de Conexión SVG -->
+      <svg id="connections-svg" class="connections-svg" width="2600" height="2200"></svg>
+
+      <!-- Tarjetas de Familiares -->
+      <div id="nodes-layer" class="nodes-layer"></div>
+    </div>
+
+    <!-- Controles Flotantes Inferiores Compactos -->
+    <div class="canvas-hud-bottom">
+      <div class="zoom-controls">
+        <button id="btn-toggle-touch-mode" class="mode-pill-btn active-pan" title="Alternar entre deslizar el lienzo (✋) o mover tarjetas (✥)">
+          <span id="touch-mode-icon">✋</span>
+          <span id="touch-mode-text">Lienzo</span>
+        </button>
+        <div class="hud-divider"></div>
+        <button id="btn-zoom-out" title="Alejar">−</button>
+        <span id="zoom-level-label">100%</span>
+        <button id="btn-zoom-in" title="Acercar">+</button>
+        <button id="btn-zoom-fit" title="Encuadrar todo el árbol">⟲</button>
+      </div>
+    </div>
+
+    <!-- Mini-mapa (solo en pantallas amplias) -->
+    <div class="minimap-card" id="minimap-card">
+      <div class="minimap-header">Mapa del Lienzo</div>
+      <div class="minimap-body" id="minimap-body">
+        <div id="minimap-viewport-rect" class="minimap-viewport-rect"></div>
+        <div id="minimap-dots"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========================================================================
+       VISTA LISTA POR GENERACIÓN (ALTERNATIVA COMPACTA)
+       ======================================================================== -->
+  <section id="list-viewport" class="list-viewport hidden">
+    <div class="list-container" id="list-container"></div>
+  </section>
+
+  <!-- ========================================================================
+       PANEL DESLIZABLE DEL FAMILIAR (CABECERA COMPACTA + 80% ÁREA MULTIMEDIA)
+       ======================================================================== -->
+  <div id="member-drawer-backdrop" class="drawer-backdrop hidden"></div>
+  <aside id="member-drawer" class="member-drawer hidden" aria-hidden="true">
+    <div class="drawer-drag-handle" id="drawer-drag-handle">
+      <span></span>
+    </div>
+
+    <!-- Cabecera ultracompacta de 1 sola línea para no quitar espacio al contenido -->
+    <div class="drawer-header-compact">
+      <div class="drawer-portrait-sm" id="drawer-portrait"></div>
+      <div class="drawer-title-compact">
+        <div class="drawer-name-row">
+          <h2 id="drawer-name">Héctor Álvarez</h2>
+          <span class="years-badge" id="drawer-years">1934–2018</span>
+        </div>
+        <div class="drawer-sub-row">
+          <span class="role-badge" id="drawer-role">Abuelo Paterno</span>
+          <span class="drawer-nickname-trunc" id="drawer-nickname">Maestro carpintero</span>
+        </div>
+      </div>
+      <div class="drawer-header-btns">
+        <button id="btn-expand-drawer" class="icon-btn" title="Expandir / Contraer panel">⤢</button>
+        <button id="btn-close-drawer" class="icon-btn" aria-label="Cerrar panel">✕</button>
+      </div>
+    </div>
+
+    <!-- Barra rápida de íconos de edición del familiar (oculta en modo Solo Lectura) -->
+    <div id="drawer-edit-actions" class="drawer-icon-toolbar">
+      <button id="btn-add-parent-to-member" class="toolbar-chip" title="Añadir Padre/Madre (Nivel superior)">⬆️+ Padre</button>
+      <button id="btn-add-child-to-member" class="toolbar-chip" title="Añadir Hijo/a (Nivel inferior)">⬇️+ Hijo</button>
+      <button id="btn-add-spouse-to-member" class="toolbar-chip" title="Añadir Pareja">♥+ Pareja</button>
+      <button id="btn-edit-current-member" class="toolbar-chip" title="Editar biografía y vínculos">✏️</button>
+      <button id="btn-upload-for-member" class="toolbar-chip" title="Subir archivo a Drive">📤</button>
+      <button id="btn-delete-current-member" class="toolbar-chip danger-chip" title="Eliminar familiar">🗑️</button>
+    </div>
+
+    <div id="drawer-pending-delete-alert" class="auth-error hidden" style="margin: 6px 14px 0;"></div>
+
+    <!-- Pestañas de acceso directo a Biografía, Cartas con Voz, Fotos y Videos -->
+    <nav class="drawer-tabs">
+      <button class="drawer-tab active" data-tab="bio">
+        <span>📜 Bio</span>
+      </button>
+      <button class="drawer-tab" data-tab="letters">
+        <span>✉️ Voz</span>
+        <span id="tab-count-letters" class="tab-badge">1</span>
+      </button>
+      <button class="drawer-tab" data-tab="photos">
+        <span>📷 Fotos</span>
+        <span id="tab-count-photos" class="tab-badge">2</span>
+      </button>
+      <button class="drawer-tab" data-tab="videos">
+        <span>🎬 Videos</span>
+        <span id="tab-count-videos" class="tab-badge">1</span>
+      </button>
+    </nav>
+
+    <!-- Área de Contenido Amplia y Deslizable (80% del alto) -->
+    <div class="drawer-content">
+      <!-- TAB 1: BIOGRAFÍA Y VÍNCULOS -->
+      <div id="tab-panel-bio" class="tab-panel active">
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">📍 Origen</span>
+            <span class="info-value" id="bio-birthplace">—</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">🛠️ Oficio</span>
+            <span class="info-value" id="bio-occupation">—</span>
+          </div>
+        </div>
+
+        <div class="bio-story-card">
+          <h3>Historia de vida</h3>
+          <p id="bio-text"></p>
+        </div>
+
+        <div class="family-links-section">
+          <h3>Líneas Parentales (toca para ir)</h3>
+          <div id="bio-family-links" class="family-links-chips"></div>
+        </div>
+
+        <div class="timeline-section">
+          <h3>Hitos y fechas</h3>
+          <ul id="bio-milestones" class="milestone-list"></ul>
+        </div>
+      </div>
+
+      <!-- TAB 2: CARTAS MANUSCRITAS + LECTURA CON VOZ EN ESPAÑOL -->
+      <div id="tab-panel-letters" class="tab-panel">
+        <div id="letters-container"></div>
+      </div>
+
+      <!-- TAB 3: FOTOS DESDE GOOGLE DRIVE -->
+      <div id="tab-panel-photos" class="tab-panel">
+        <div class="drive-optimization-banner">
+          <span>☁️ <strong>Drive del Propietario:</strong> Miniaturas optimizadas (~15 KB) para señal móvil débil.</span>
+        </div>
+        <div id="photos-container" class="photos-grid"></div>
+      </div>
+
+      <!-- TAB 4: VIDEOS (YOUTUBE OCULTO O DRIVE) -->
+      <div id="tab-panel-videos" class="tab-panel">
+        <div id="videos-container"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========================================================================
+       MODAL 1: GESTIÓN DE USUARIOS Y CO-EDITORES (RESPONSIVO CON ÍCONOS)
+       ======================================================================== -->
+  <div id="modal-permissions" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>🔐 Gestión de Usuarios y Co-editores</h3>
+        <button id="btn-close-permissions-modal" class="icon-btn">✕</button>
+      </div>
+
+      <div class="perm-section">
+        <div class="perm-owner-box">
+          <span class="role-badge">👑 Propietario Único (Drive + Decisiones)</span>
+          <div class="perm-owner-email" id="perm-owner-email">martin.alvarez@gmail.com</div>
+        </div>
+
+        <!-- Selector rápido de rol -->
+        <div class="perm-switch-box">
+          <label for="quick-role-switcher">🧪 Probar vista ahora como:</label>
+          <select id="quick-role-switcher" class="auth-select compact-select"></select>
+        </div>
+
+        <div class="perm-legend">
+          <span><strong>Íconos:</strong></span>
+          <span>✏️ Editar correo</span>
+          <span>⬆️ Hacer Co-editor</span>
+          <span>⬇️ Pasar a Lector</span>
+          <span>🗑️ Eliminar</span>
+        </div>
+
+        <h4 class="perm-subtitle">✍️ Co-editores (Editan árbol y gestionan lectores)</h4>
+        <div id="coeditors-list" class="perm-list"></div>
+
+        <form id="form-add-coeditor" class="perm-add-row">
+          <input type="email" id="input-new-coeditor" placeholder="Agregar co-editor@gmail.com" required />
+          <button type="submit" class="icon-btn primary-icon-btn" title="Añadir Co-editor">➕</button>
+        </form>
+
+        <h4 class="perm-subtitle">👁️ Lectores (Solo lectura del lienzo)</h4>
+        <div id="viewers-list" class="perm-list"></div>
+
+        <form id="form-add-viewer" class="perm-add-row">
+          <input type="email" id="input-new-viewer" placeholder="Agregar lector@gmail.com" required />
+          <button type="submit" class="icon-btn secondary-icon-btn" title="Añadir Lector">➕</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 2: SUBIDA DIRECTA AL GOOGLE DRIVE DEL PROPIETARIO + SWITCH YOUTUBE
+       ======================================================================== -->
+  <div id="modal-upload" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📤 Subir Material al Drive</h3>
+        <button id="btn-close-upload-modal" class="icon-btn">✕</button>
+      </div>
+
+      <div class="drive-optimization-banner">
+        ☁️ Destino: <strong>Google Drive de <span id="upload-owner-label">martin.alvarez@gmail.com</span></strong>
+      </div>
+
+      <form id="form-upload-media" class="modal-form">
+        <div class="form-row">
+          <label>
+            Familiar:
+            <select id="upload-member-select" required></select>
+          </label>
+          <label>
+            Tipo de archivo:
+            <select id="upload-type-select">
+              <option value="photo">📷 Fotografía (a Drive)</option>
+              <option value="letter">✉️ Carta en Papel (Drive + Voz)</option>
+              <option value="video">🎬 Video (Drive / YouTube)</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            Título:
+            <input type="text" id="upload-title-input" placeholder="Ej: Casamiento / Carta 1965" required />
+          </label>
+          <label>
+            Año o Fecha:
+            <input type="text" id="upload-date-input" placeholder="Ej: 1974 o 12/05/1968" required />
+          </label>
+        </div>
+
+        <div class="file-drop-zone" id="file-drop-zone">
+          <input type="file" id="upload-file-input" accept="image/*,video/*" />
+          <div id="file-drop-text">
+            📁 <strong>Elegir foto, escaneo o video de tu dispositivo</strong>
+          </div>
+        </div>
+
+        <div id="upload-letter-options" class="hidden">
+          <label>
+            Estilo de papel:
+            <select id="upload-paper-select">
+              <option value="aged-cream">Papel antiguo crema</option>
+              <option value="lined-notebook">Hoja de cuaderno rayado</option>
+              <option value="airmail">Carta Vía Aérea</option>
+              <option value="watercolor-paper">Papel algodón con flor</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- INTERRUPTOR DE PRECARGA EN YOUTUBE -->
+        <div id="upload-video-options" class="youtube-toggle-card hidden">
+          <div class="yt-toggle-header">
+            <div>
+              <div class="yt-toggle-title">🎬 ¿Subir a YouTube (Oculto) para dejarlo precargado?</div>
+              <div class="yt-toggle-desc" id="yt-toggle-status-text">
+                <strong>Activado:</strong> Se sube al canal del propietario como <em>Oculto</em> con calidad adaptativa (240p/480p/720p).
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="upload-youtube-toggle" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <label id="upload-desc-label">
+          Epígrafe o transcripción de la carta:
+          <textarea
+            id="upload-desc-input"
+            rows="3"
+            placeholder="Historia o texto de la carta (separa párrafos con Enter para la lectura por voz)..."
+            required
+          ></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-upload" class="btn-ghost">Cancelar</button>
+          <button type="submit" id="btn-submit-upload" class="btn-primary">☁️ Subir al Drive</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 3: AGREGAR O EDITAR FAMILIAR (CON SUBNIVELES HACIA AMBOS LADOS)
+       ======================================================================== -->
+  <div id="modal-member" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-member-title">👤 Agregar Familiar</h3>
+        <button id="btn-close-member-modal" class="icon-btn">✕</button>
+      </div>
+      <form id="form-member" class="modal-form">
+        <input type="hidden" id="member-id-input" />
+        <div class="form-row">
+          <label>
+            Nombre y Apellido:
+            <input type="text" id="member-name-input" placeholder="Ej: Don Fermín Álvarez" required />
+          </label>
+          <label>
+            Apodo:
+            <input type="text" id="member-nickname-input" placeholder="Ej: El Bisabuelo Fermín" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            Rol o Parentesco:
+            <input type="text" id="member-role-input" placeholder="Ej: Bisabuelo, Nieto..." required />
+          </label>
+          <label>
+            Nivel Generacional:
+            <select id="member-gen-select">
+              <option value="-1">Nivel -1 · Tatarabuelos</option>
+              <option value="0">Nivel 0 · Bisabuelos</option>
+              <option value="1">Nivel 1 · Abuelos</option>
+              <option value="2">Nivel 2 · Padres y Tíos</option>
+              <option value="3" selected>Nivel 3 · Hermanos y Primos</option>
+              <option value="4">Nivel 4 · Hijos y Sobrinos</option>
+              <option value="5">Nivel 5 · Nietos</option>
+              <option value="6">Nivel 6 · Bisnietos</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            Rama Familiar:
+            <select id="member-branch-select">
+              <option value="paterna">Rama Paterna</option>
+              <option value="materna">Rama Materna</option>
+              <option value="ambas">Ambas Ramas</option>
+            </select>
+          </label>
+          <label>
+            Timbre de Voz (Español):
+            <select id="member-voice-select">
+              <option value="es-419+m1|140|46">Masculina Adulta</option>
+              <option value="es-419+m3|134|38">Masculina Grave / Mayor</option>
+              <option value="es-419+f1|142|55">Femenina Adulta</option>
+              <option value="es-419+f2|136|56">Femenina Cálida / Mayor</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            ⬆️ Padre/Madre 1:
+            <select id="member-parent1-select"></select>
+          </label>
+          <label>
+            ⬆️ Padre/Madre 2:
+            <select id="member-parent2-select"></select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            ⬇️ Hijo/a 1:
+            <select id="member-child1-select"></select>
+          </label>
+          <label>
+            ⬇️ Hijo/a 2:
+            <select id="member-child2-select"></select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            ♥ Pareja / Cónyuge:
+            <select id="member-spouse-select"></select>
+          </label>
+          <label>
+            Color de Retrato:
+            <select id="member-color-select">
+              <option value="#8C5A3C">Madera / Terracota</option>
+              <option value="#3B6978">Azul Atlántico</option>
+              <option value="#5E7B62">Verde Botánico</option>
+              <option value="#9E4752">Borgoña</option>
+              <option value="#7A5C75">Violeta Archivo</option>
+              <option value="#2E5B88">Azul Marino</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            Nacimiento:
+            <input type="text" id="member-birth-input" placeholder="Ej: 1908" required />
+          </label>
+          <label>
+            Fallecimiento (o Presente):
+            <input type="text" id="member-death-input" value="Presente" required />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            Lugar de origen:
+            <input type="text" id="member-place-input" placeholder="Ej: Areco / Lucca" />
+          </label>
+          <label>
+            Oficio / Vocación:
+            <input type="text" id="member-job-input" placeholder="Ej: Carpintero, Maestra..." />
+          </label>
+        </div>
+
+        <label>
+          Biografía:
+          <textarea id="member-bio-input" rows="3" placeholder="Recuerdos e historia de vida..." required></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-member" class="btn-ghost">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar Familiar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 4: SISTEMA DE VALIDACIÓN DE DECISIONES
+       ======================================================================== -->
+  <div id="modal-approvals" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>⚖️ Validación de Decisiones</h3>
+        <button id="btn-close-approvals-modal" class="icon-btn">✕</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--ink-secondary);line-height:1.45;margin-bottom:12px;">
+        Las solicitudes de eliminación enviadas por <strong>Co-editores</strong> requieren la decisión final del <strong>Propietario</strong>.
+      </p>
+      <div id="approvals-list-container" class="perm-list"></div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 5: HISTORIAL DE MODIFICACIONES
+       ======================================================================== -->
+  <div id="modal-history" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>🕒 Historial de Modificaciones</h3>
+        <button id="btn-close-history-modal" class="icon-btn">✕</button>
+      </div>
+
+      <div class="history-pills-bar" id="history-filter-pills">
+        <button class="pill active" data-hfilter="all">Todos</button>
+        <button class="pill" data-hfilter="coeditors">✍️ Co-editores</button>
+        <button class="pill" data-hfilter="members">🌳 Parientes</button>
+        <button class="pill" data-hfilter="media">📤 Archivos</button>
+        <button class="pill" data-hfilter="approvals">🔐 Accesos</button>
+      </div>
+
+      <div id="history-list-container" class="perm-list"></div>
+    </div>
+  </div>
+
+  <!-- TOAST DE NOTIFICACIÓN -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="./fallback-data.js?v=6"></script>
+  <script src="./app.js?v=6"></script>
+</body>
+</html>

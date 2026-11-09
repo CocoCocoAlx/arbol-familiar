@@ -1,0 +1,10 @@
+{
+  "name": "Archivo Familiar Álvarez – Conti",
+  "short_name": "Árbol Familiar",
+  "description": "Lienzo genealógico privado con biografías, fotos y cartas leídas con voz personalizada.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6F1E7",
+  "theme_color": "#7C4D33",
+  "orientation": "any"
+}

@@ -1,0 +1,952 @@
+{
+  "metadata": {
+    "familyName": "Familia Álvarez – Conti",
+    "lastUpdated": "2026-11-04",
+    "ownerEmail": "martin.alvarez@gmail.com",
+    "coEditors": [
+      "elena.conti@gmail.com"
+    ],
+    "driveRootFolder": "Mi Unidad / Archivo_Familiar_Alvarez_Conti",
+    "youtubeChannel": "Canal Familiar Álvarez-Conti (Videos Ocultos)",
+    "allowedEmails": [
+      "martin.alvarez@gmail.com",
+      "elena.conti@gmail.com",
+      "lucia.alvarez@gmail.com",
+      "roberto.alvarez@gmail.com",
+      "marta.alvarez@gmail.com",
+      "jorge.conti@gmail.com"
+    ]
+  },
+  "members": [
+    {
+      "id": "abuelo-pat",
+      "name": "Héctor Álvarez",
+      "nickname": "El Tata Héctor",
+      "role": "Abuelo Paterno",
+      "generation": 1,
+      "branch": "paterna",
+      "birthYear": "1934",
+      "deathYear": "2018",
+      "birthPlace": "San Antonio de Areco, Argentina",
+      "occupation": "Maestro carpintero y bandoneonista",
+      "x": 140,
+      "y": 380,
+      "spouseId": "abuela-pat",
+      "parentIds": [],
+      "avatarColor": "#8C5A3C",
+      "avatarInitials": "HÁ",
+      "portraitStyle": "mustache-hat",
+      "voiceProfile": {
+        "pitch": 0.82,
+        "rate": 0.88,
+        "label": "Voz clonada de Héctor (Grabación VHS 1994)",
+        "sampleSource": "Extraída de cassette familiar de su cumpleaños Nº 60",
+        "espeakVoice": "es-419+m3",
+        "espeakSpeed": 132,
+        "espeakPitch": 38
+      },
+      "bio": "Hijo de inmigrantes asturianos, aprendió el oficio de la ebanistería a los catorce años. En su taller de fondo siempre sonaba algún tango en la radio a válvulas y olía a viruta de cedro y cola caliente. Construyó con sus propias manos la cuna en la que durmieron sus dos hijos y sus cuatro nietos. Los domingos por la tarde sacaba su bandoneón Premier nacarado debajo del ropero y tocaba 'Sur' mientras Rosaura preparaba el mate con cáscara de naranja.",
+      "milestones": [
+        {
+          "year": "1934",
+          "event": "Nace en San Antonio de Areco."
+        },
+        {
+          "year": "1958",
+          "event": "Abre su taller de carpintería 'El Ceibo'."
+        },
+        {
+          "year": "1960",
+          "event": "Se casa con Rosaura Méndez en la capilla del pueblo."
+        },
+        {
+          "year": "1994",
+          "event": "Graba un cassette de cuentos y tangos para sus nietos."
+        }
+      ],
+      "letters": [
+        {
+          "id": "carta-hector-1962",
+          "title": "Carta a Rosaura al nacer Roberto",
+          "date": "14 de mayo de 1962",
+          "location": "Taller El Ceibo, Areco",
+          "paperType": "aged-cream",
+          "inkColor": "#2b3a4a",
+          "driveSizeKB": 18,
+          "audioDurationSec": 34,
+          "paragraphs": [
+            "Querida Rosaura:",
+            "Te escribo estas líneas a la luz de la lámpara del taller mientras vos y el chiquito descansan en la pieza.",
+            "Hoy terminé de lustrar la cuna de algarrobo. Mientras pasaba la cera pensé que la madera buena se parece mucho a una familia: aguanta los inviernos, guarda el calor y con los años se pone más noble.",
+            "Cuando Roberto sea grande y lea este papel, quiero que sepa que llegó a una casa humilde pero llena de música y trabajo honesto.",
+            "Te abraza con toda el alma, tu Héctor."
+          ]
+        }
+      ],
+      "photos": [
+        {
+          "id": "foto-hector-1",
+          "title": "En el taller 'El Ceibo' con su garlopa",
+          "year": "1964",
+          "caption": "Trabajando la mesa grande del comedor familiar.",
+          "scene": "workshop",
+          "sizeKB": 14
+        },
+        {
+          "id": "foto-hector-2",
+          "title": "Tocando el bandoneón en el patio",
+          "year": "1982",
+          "caption": "Domingo de asado bajo la parra.",
+          "scene": "bandoneon",
+          "sizeKB": 16
+        }
+      ],
+      "videos": [
+        {
+          "id": "vid-hector-1",
+          "title": "Brindis de los 60 años y tango en el patio (VHS)",
+          "year": "1994",
+          "duration": "02:15",
+          "youtubeUnlistedId": "yt-unlisted-hector-1994",
+          "description": "Digitalizado de cinta VHS-C. De este video se tomó la muestra limpia de voz para leer sus cartas."
+        }
+      ]
+    },
+    {
+      "id": "abuela-pat",
+      "name": "Rosaura Méndez",
+      "nickname": "La Abuela Rosa",
+      "role": "Abuela Paterna",
+      "generation": 1,
+      "branch": "paterna",
+      "birthYear": "1937",
+      "deathYear": "2021",
+      "birthPlace": "Mercedes, Buenos Aires",
+      "occupation": "Maestra rural de escuela primaria",
+      "x": 415,
+      "y": 380,
+      "spouseId": "abuelo-pat",
+      "parentIds": [
+        "familiar-1793837061466"
+      ],
+      "avatarColor": "#9E4752",
+      "avatarInitials": "RM",
+      "portraitStyle": "bun-glasses",
+      "voiceProfile": {
+        "pitch": 1.15,
+        "rate": 0.9,
+        "label": "Voz clonada de Rosaura (Audio de sobremesa 2012)",
+        "sampleSource": "Grabación contando la historia de la escuela Nº 14",
+        "espeakVoice": "es-419+f2",
+        "espeakSpeed": 136,
+        "espeakPitch": 56
+      },
+      "bio": "Recorrió durante veintiocho años el camino de tierra en sulky y luego en bicicleta hasta la Escuela Rural Nº 14. Tenía una caligrafía perfecta estilo Palmer que enseñó a tres generaciones. Guardaba todas las cartas atadas con cintas de raso azul en una lata de galletitas inglesas y anotaba detrás de cada fotografía quiénes estaban y qué día hacía.",
+      "milestones": [
+        {
+          "year": "1937",
+          "event": "Nace en Mercedes."
+        },
+        {
+          "year": "1956",
+          "event": "Se recibe de Maestra Normal Nacional."
+        },
+        {
+          "year": "1960",
+          "event": "Se casa con Héctor Álvarez."
+        },
+        {
+          "year": "1988",
+          "event": "Escribe el cuaderno de recetas y memorias de la familia."
+        }
+      ],
+      "letters": [
+        {
+          "id": "carta-rosaura-1988",
+          "title": "Nota en la primera página del recetario familiar",
+          "date": "21 de septiembre de 1988",
+          "location": "Cocina de la casa grande",
+          "paperType": "lined-notebook",
+          "inkColor": "#1f3a60",
+          "driveSizeKB": 15,
+          "audioDurationSec": 30,
+          "paragraphs": [
+            "Para mis hijos y para los nietos que vendrán:",
+            "En este cuaderno les dejo las medidas de los tallarines de los domingos y de la torta de manzana, pero no se fíen solo de los gramos.",
+            "El secreto de esta cocina siempre fue que la mesa estuviera abierta para el que llegara y que nadie se fuera sin escuchar una historia.",
+            "Cuiden mucho a sus hermanos y a sus primos, que son las ramas del mismo árbol.",
+            "Con todo mi cariño, Mamá y Abuela Rosaura."
+          ]
+        }
+      ],
+      "photos": [
+        {
+          "id": "foto-rosaura-1",
+          "title": "Frente al pizarrón de la Escuela Rural Nº 14",
+          "year": "1961",
+          "caption": "Con sus alumnos de primer grado.",
+          "scene": "school",
+          "sizeKB": 12
+        }
+      ],
+      "videos": []
+    },
+    {
+      "id": "abuelo-mat",
+      "name": "Vittorio Conti",
+      "nickname": "El Nonno Vito",
+      "role": "Abuelo Materno",
+      "generation": 1,
+      "branch": "materna",
+      "birthYear": "1932",
+      "deathYear": "2015",
+      "birthPlace": "Lucca, Toscana, Italia",
+      "occupation": "Relojero de precisión y fotógrafo aficionado",
+      "x": 760,
+      "y": 380,
+      "spouseId": "abuela-mat",
+      "parentIds": [
+        "familiar-1793835651967"
+      ],
+      "avatarColor": "#3B6978",
+      "avatarInitials": "VC",
+      "portraitStyle": "watchmaker",
+      "voiceProfile": {
+        "pitch": 0.88,
+        "rate": 0.86,
+        "label": "Voz clonada de Vittorio (Acento ítalo-argentino)",
+        "sampleSource": "Audio restaurado de entrevista familiar en 2008",
+        "espeakVoice": "es+m2",
+        "espeakSpeed": 132,
+        "espeakPitch": 42
+      },
+      "bio": "Cruzó el Atlántico en el vapor 'Andrea C.' en 1952 con una valija de cartón y su estuche de herramientas de relojero suizo. Gracias a su pasión por las cámaras réflex de rollo hoy conservamos cientos de negativos en blanco y negro perfectamente clasificados por fecha en sobres de papel manteca.",
+      "milestones": [
+        {
+          "year": "1932",
+          "event": "Nace en Lucca, Italia."
+        },
+        {
+          "year": "1952",
+          "event": "Desembarca en el puerto de Buenos Aires."
+        },
+        {
+          "year": "1959",
+          "event": "Inaugura la Relojería 'Il Tempo' y conoce a Clara."
+        }
+      ],
+      "letters": [
+        {
+          "id": "carta-vittorio-1952",
+          "title": "Carta escrita a bordo del vapor cruzando el océano",
+          "date": "3 de noviembre de 1952",
+          "location": "A bordo del vapor, Atlántico Sur",
+          "paperType": "airmail",
+          "inkColor": "#2c221e",
+          "driveSizeKB": 19,
+          "audioDurationSec": 32,
+          "paragraphs": [
+            "Querida familia:",
+            "Hoy el mar estuvo calmo como un espejo y por primera vez vimos aves anunciando que la costa del sur está cerca.",
+            "Llevo en el bolsillo el reloj de bolsillo del abuelo funcionando al segundo; me recuerda que el tiempo no se pierde cuando uno viaja hacia el futuro.",
+            "Prometo escribir apenas pise tierra firme y encuentre dónde armar mi mesa de relojero.",
+            "Un abrazo grande desde cubierta, Vittorio."
+          ]
+        }
+      ],
+      "photos": [
+        {
+          "id": "foto-vittorio-1",
+          "title": "En el mostrador de la Relojería 'Il Tempo'",
+          "year": "1967",
+          "caption": "Con su lupa de ojo reparando un cronógrafo.",
+          "scene": "clockshop",
+          "sizeKB": 15
+        }
+      ],
+      "videos": [
+        {
+          "id": "vid-vittorio-1",
+          "title": "Explicando cómo dar cuerda al reloj de péndulo",
+          "year": "2008",
+          "duration": "01:42",
+          "youtubeUnlistedId": "yt-unlisted-vittorio-2008",
+          "description": "Grabado con teléfono celular y subido en modo oculto con streaming adaptativo."
+        }
+      ]
+    },
+    {
+      "id": "abuela-mat",
+      "name": "Clara Valdés",
+      "nickname": "La Nonna Clara",
+      "role": "Abuela Materna",
+      "generation": 1,
+      "branch": "materna",
+      "birthYear": "1936",
+      "deathYear": "Presente",
+      "birthPlace": "La Plata, Argentina",
+      "occupation": "Ilustradora botánica y acuarelista",
+      "x": 1035,
+      "y": 380,
+      "spouseId": "abuelo-mat",
+      "parentIds": [],
+      "avatarColor": "#5E7B62",
+      "avatarInitials": "CV",
+      "portraitStyle": "artist",
+      "voiceProfile": {
+        "pitch": 1.18,
+        "rate": 0.92,
+        "label": "Voz de Clara (Grabada en vivo en 2026)",
+        "sampleSource": "Lectura grabada directamente por la abuela Clara",
+        "espeakVoice": "es-419+f3",
+        "espeakSpeed": 135,
+        "espeakPitch": 58
+      },
+      "bio": "A sus 90 años sigue pintando flores nativas en su invernadero lleno de helechos y jazmines. Conoció a Vittorio cuando llevó a arreglar un viejo reloj despertador de su padre y desde entonces armaron un hogar lleno de libros de arte, música clásica y plantas.",
+      "milestones": [
+        {
+          "year": "1936",
+          "event": "Nace en La Plata."
+        },
+        {
+          "year": "1961",
+          "event": "Ilustra su primer catálogo de flora rioplatense."
+        },
+        {
+          "year": "2024",
+          "event": "Comienza a digitalizar sus cuadernos junto a sus nietos."
+        }
+      ],
+      "letters": [
+        {
+          "id": "carta-clara-2020",
+          "title": "Carta con flor prensada para mis cuatro nietos",
+          "date": "12 de octubre de 2020",
+          "location": "Invernadero de La Plata",
+          "paperType": "watercolor-paper",
+          "inkColor": "#2d4739",
+          "driveSizeKB": 14,
+          "audioDurationSec": 28,
+          "paragraphs": [
+            "Queridos Martín, Lucía, Lucas y Sofía:",
+            "Junto a esta hoja les guardo una ramita de lavanda seca del jardín que plantamos con el Nonno Vito.",
+            "Cada vez que miren este árbol genealógico recuerden que las raíces no están atrás en el pasado, sino sosteniendo cada paso nuevo que ustedes dan.",
+            "Los quiere inmensamente, la Nonna Clara."
+          ]
+        }
+      ],
+      "photos": [
+        {
+          "id": "foto-clara-1",
+          "title": "Pintando acuarelas en el jardín de invierno",
+          "year": "1979",
+          "caption": "Rodeada de helechos y frascos de pigmentos.",
+          "scene": "garden",
+          "sizeKB": 13
+        }
+      ],
+      "videos": []
+    },
+    {
+      "id": "tia-pat",
+      "name": "Marta Álvarez",
+      "nickname": "Tía Marta",
+      "role": "Tía Paterna",
+      "generation": 2,
+      "branch": "paterna",
+      "birthYear": "1966",
+      "deathYear": "Presente",
+      "birthPlace": "San Antonio de Areco",
+      "occupation": "Profesora de Historia y archivista",
+      "x": 140,
+      "y": 650,
+      "spouseId": null,
+      "parentIds": [
+        "abuelo-pat",
+        "abuela-pat"
+      ],
+      "avatarColor": "#A3634B",
+      "avatarInitials": "MÁ",
+      "portraitStyle": "historian",
+      "voiceProfile": {
+        "pitch": 1.08,
+        "rate": 0.96,
+        "label": "Voz de Marta Álvarez",
+        "sampleSource": "Audio de presentación familiar",
+        "espeakVoice": "es-419+f4",
+        "espeakSpeed": 142,
+        "espeakPitch": 54
+      },
+      "bio": "Hermana menor de Roberto e hija de Héctor y Rosaura. Heredó de su madre el amor por la enseñanza y fue quien conservó la caja metálica con las actas de nacimiento, libretas de enrolamiento y cartas antiguas de la rama Álvarez.",
+      "milestones": [
+        {
+          "year": "1966",
+          "event": "Nace en San Antonio de Areco."
+        },
+        {
+          "year": "1995",
+          "event": "Nace su hijo Lucas."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "padre",
+      "name": "Roberto Álvarez",
+      "nickname": "Papá Beto",
+      "role": "Padre",
+      "generation": 2,
+      "branch": "paterna",
+      "birthYear": "1962",
+      "deathYear": "Presente",
+      "birthPlace": "San Antonio de Areco",
+      "occupation": "Ingeniero Civil",
+      "x": 485,
+      "y": 650,
+      "spouseId": "madre",
+      "parentIds": [
+        "abuelo-pat",
+        "abuela-pat"
+      ],
+      "avatarColor": "#4A6B82",
+      "avatarInitials": "RÁ",
+      "portraitStyle": "engineer",
+      "voiceProfile": {
+        "pitch": 0.92,
+        "rate": 0.95,
+        "label": "Voz de Roberto Álvarez",
+        "sampleSource": "Nota de voz familiar",
+        "espeakVoice": "es-419+m1",
+        "espeakSpeed": 140,
+        "espeakPitch": 44
+      },
+      "bio": "Hijo mayor de Héctor y Rosaura. Se mudó a La Plata para estudiar Ingeniería Civil, donde conoció a Elena en una exposición de fotografía universitaria. Todavía restaura muebles antiguos con las herramientas que heredó del taller de su padre.",
+      "milestones": [
+        {
+          "year": "1962",
+          "event": "Nace en Areco (su padre le escribe la carta de la cuna)."
+        },
+        {
+          "year": "1990",
+          "event": "Se casa con Elena Conti."
+        }
+      ],
+      "letters": [
+        {
+          "id": "carta-roberto-1993",
+          "title": "Dedicatoria en el álbum de fotos familiar",
+          "date": "8 de agosto de 1993",
+          "location": "La Plata",
+          "paperType": "aged-cream",
+          "inkColor": "#1e3246",
+          "driveSizeKB": 12,
+          "audioDurationSec": 20,
+          "paragraphs": [
+            "Elena, Martín y Lucía:",
+            "Armamos este álbum para que nunca nos olvidemos de dónde venimos ni de los abuelos que nos enseñaron a construir con paciencia.",
+            "Con amor, Roberto."
+          ]
+        }
+      ],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "madre",
+      "name": "Elena Conti",
+      "nickname": "Mamá Elena",
+      "role": "Madre",
+      "generation": 2,
+      "branch": "materna",
+      "birthYear": "1965",
+      "deathYear": "Presente",
+      "birthPlace": "La Plata",
+      "occupation": "Arquitecta patrimonial",
+      "x": 770,
+      "y": 689,
+      "spouseId": "padre",
+      "parentIds": [
+        "abuelo-mat",
+        "abuela-mat"
+      ],
+      "avatarColor": "#7A5C75",
+      "avatarInitials": "EC",
+      "portraitStyle": "architect",
+      "voiceProfile": {
+        "pitch": 1.12,
+        "rate": 0.96,
+        "label": "Voz de Elena Conti",
+        "sampleSource": "Nota de voz familiar",
+        "espeakVoice": "es-419+f1",
+        "espeakSpeed": 142,
+        "espeakPitch": 55
+      },
+      "bio": "Hija mayor de Vittorio y Clara. Especialista en restauración de edificios históricos, combinó la precisión técnica de su padre relojero con la sensibilidad artística de su madre acuarelista.",
+      "milestones": [
+        {
+          "year": "1965",
+          "event": "Nace en La Plata."
+        },
+        {
+          "year": "1990",
+          "event": "Se casa con Roberto Álvarez."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "tio-mat",
+      "name": "Jorge Conti",
+      "nickname": "Tío Coco",
+      "role": "Tío Materno",
+      "generation": 2,
+      "branch": "materna",
+      "birthYear": "1968",
+      "deathYear": "Presente",
+      "birthPlace": "La Plata",
+      "occupation": "Fotógrafo documental",
+      "x": 1105,
+      "y": 650,
+      "spouseId": null,
+      "parentIds": [
+        "abuelo-mat",
+        "abuela-mat"
+      ],
+      "avatarColor": "#4E7A6E",
+      "avatarInitials": "JC",
+      "portraitStyle": "photographer",
+      "voiceProfile": {
+        "pitch": 0.94,
+        "rate": 0.95,
+        "label": "Voz de Jorge Conti",
+        "sampleSource": "Audio del archivo fotográfico",
+        "espeakVoice": "es-419+m4",
+        "espeakSpeed": 140,
+        "espeakPitch": 46
+      },
+      "bio": "Hermano menor de Elena e hijo de Vittorio y Clara. Heredó el cuarto oscuro y las cámaras analógicas del Nonno Vito, y es quien escaneó en alta resolución los negativos y cartas que hoy forman este archivo en Google Drive.",
+      "milestones": [
+        {
+          "year": "1968",
+          "event": "Nace en La Plata."
+        },
+        {
+          "year": "1998",
+          "event": "Nace su hija Sofía."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "primo-1",
+      "name": "Lucas Álvarez",
+      "nickname": "Luki",
+      "role": "Primo (Rama Paterna)",
+      "generation": 3,
+      "branch": "paterna",
+      "birthYear": "1995",
+      "deathYear": "Presente",
+      "birthPlace": "San Antonio de Areco",
+      "occupation": "Luthier y músico acústico",
+      "x": 140,
+      "y": 920,
+      "spouseId": null,
+      "parentIds": [
+        "tia-pat"
+      ],
+      "avatarColor": "#9C6B43",
+      "avatarInitials": "LÁ",
+      "portraitStyle": "young-1",
+      "voiceProfile": {
+        "pitch": 0.98,
+        "rate": 1.0,
+        "label": "Voz de Lucas Álvarez",
+        "sampleSource": "Audio familiar",
+        "espeakVoice": "es-419+m2",
+        "espeakSpeed": 145,
+        "espeakPitch": 48
+      },
+      "bio": "Hijo de la tía Marta. Continuó la tradición del abuelo Héctor en el trabajo de la madera fina y la música, restaurando guitarras criollas y el famoso bandoneón familiar.",
+      "milestones": [
+        {
+          "year": "1995",
+          "event": "Nace en San Antonio de Areco."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "hermano-1",
+      "name": "Martín Álvarez Conti",
+      "nickname": "Tincho (Vos / Creador)",
+      "role": "Hermano",
+      "generation": 3,
+      "branch": "ambas",
+      "birthYear": "1993",
+      "deathYear": "Presente",
+      "birthPlace": "La Plata",
+      "occupation": "Impulsor del Archivo Digital Familiar",
+      "x": 485,
+      "y": 920,
+      "spouseId": null,
+      "parentIds": [
+        "padre",
+        "madre"
+      ],
+      "avatarColor": "#2E5B88",
+      "avatarInitials": "MÁ",
+      "portraitStyle": "young-2",
+      "voiceProfile": {
+        "pitch": 1.0,
+        "rate": 1.0,
+        "label": "Voz de Martín",
+        "sampleSource": "Audio familiar",
+        "espeakVoice": "es-419+m1",
+        "espeakSpeed": 145,
+        "espeakPitch": 50
+      },
+      "bio": "Hijo de Roberto y Elena, nieto de Héctor, Rosaura, Vittorio y Clara. Creó este lienzo interactivo para reunir las biografías, fotos, videos y cartas habladas de toda la familia.",
+      "milestones": [
+        {
+          "year": "1993",
+          "event": "Nace en La Plata."
+        },
+        {
+          "year": "2026",
+          "event": "Lanza el proyecto del Árbol Genealógico Interactivo."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "hermano-2",
+      "name": "Lucía Álvarez Conti",
+      "nickname": "Lu",
+      "role": "Hermana",
+      "generation": 3,
+      "branch": "ambas",
+      "birthYear": "1996",
+      "deathYear": "Presente",
+      "birthPlace": "La Plata",
+      "occupation": "Diseñadora visual y violonchelista",
+      "x": 830,
+      "y": 920,
+      "spouseId": null,
+      "parentIds": [
+        "padre",
+        "madre"
+      ],
+      "avatarColor": "#8C4A6A",
+      "avatarInitials": "LC",
+      "portraitStyle": "young-3",
+      "voiceProfile": {
+        "pitch": 1.14,
+        "rate": 1.0,
+        "label": "Voz de Lucía",
+        "sampleSource": "Audio familiar",
+        "espeakVoice": "es-419+f2",
+        "espeakSpeed": 145,
+        "espeakPitch": 56
+      },
+      "bio": "Hermana de Martín e hija de Roberto y Elena. Colabora restaurando el color de las acuarelas de la Nonna Clara y organizando las fotografías antiguas por década.",
+      "milestones": [
+        {
+          "year": "1996",
+          "event": "Nace en La Plata."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "primo-2",
+      "name": "Sofía Conti",
+      "nickname": "Sofi",
+      "role": "Prima (Rama Materna)",
+      "generation": 3,
+      "branch": "materna",
+      "birthYear": "1998",
+      "deathYear": "Presente",
+      "birthPlace": "La Plata",
+      "occupation": "Bióloga y paisajista",
+      "x": 1175,
+      "y": 920,
+      "spouseId": null,
+      "parentIds": [
+        "tio-mat"
+      ],
+      "avatarColor": "#4D7B58",
+      "avatarInitials": "SC",
+      "portraitStyle": "young-4",
+      "voiceProfile": {
+        "pitch": 1.15,
+        "rate": 1.0,
+        "label": "Voz de Sofía",
+        "sampleSource": "Audio familiar",
+        "espeakVoice": "es-419+f3",
+        "espeakSpeed": 145,
+        "espeakPitch": 58
+      },
+      "bio": "Hija del tío Jorge Conti. Comparte con su abuela Clara la pasión por las especies botánicas nativas y cuida hoy el histórico invernadero familiar.",
+      "milestones": [
+        {
+          "year": "1998",
+          "event": "Nace en La Plata."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "familiar-1793835651967",
+      "name": "Carlos Mastropiero Conti",
+      "nickname": "El Carlo",
+      "role": "Bisabuelo",
+      "generation": 0,
+      "branch": "materna",
+      "birthYear": "1902",
+      "deathYear": "1980",
+      "birthPlace": "Vicenzo, Italia",
+      "occupation": "Obrero metalúrgico",
+      "x": 485,
+      "y": 110,
+      "spouseId": null,
+      "parentIds": [],
+      "avatarColor": "#8C5A3C",
+      "avatarInitials": "CC",
+      "voiceProfile": {
+        "pitch": 1,
+        "rate": 0.94,
+        "espeakVoice": "es-419+m1",
+        "espeakSpeed": 140,
+        "espeakPitch": 46,
+        "label": "Voz en español de Carlos Mastropiero Conti",
+        "sampleSource": "Síntesis de voz familiar en español"
+      },
+      "bio": "Vino de Italia hasta Entre Ríos escapando de la mafia siciliana. Su mujer y su beba de meses murieron en altamar por la fiebre amarilla. En el país conoció a Adela, una prostituta con la que tuvo un hijo que ella abandonó al poco de nacer y huyó. Celso nunca más volvió a saber de ella",
+      "milestones": [
+        {
+          "year": "1902",
+          "event": "Nace en Vicenzo, Italia."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    },
+    {
+      "id": "familiar-1793837061466",
+      "name": "Roberto Pascuale",
+      "nickname": "El Rocho",
+      "role": "Bisabuelo",
+      "generation": 0,
+      "branch": "paterna",
+      "birthYear": "1899",
+      "deathYear": "1920",
+      "birthPlace": "Andalucía, España",
+      "occupation": "Integrante de la familia",
+      "x": 104,
+      "y": 95,
+      "spouseId": null,
+      "parentIds": [],
+      "avatarColor": "#9E4752",
+      "avatarInitials": "RP",
+      "voiceProfile": {
+        "pitch": 1,
+        "rate": 0.94,
+        "espeakVoice": "es-419+m1",
+        "espeakSpeed": 140,
+        "espeakPitch": 46,
+        "label": "Voz en español de Roberto Pascuale",
+        "sampleSource": "Síntesis de voz familiar en español"
+      },
+      "bio": "No se sabe mucho de su origen, sólo que fue un pistolero muy buscado en su tiempo. Al parecer, murió acribillado a balazos al intentar robar un carruaje de caudales.",
+      "milestones": [
+        {
+          "year": "1899",
+          "event": "Nace en Andalucía, España."
+        }
+      ],
+      "letters": [],
+      "photos": [],
+      "videos": []
+    }
+  ],
+  "pendingApprovals": [],
+  "historyLog": [
+    {
+      "id": "log-1793841982872",
+      "timestamp": "04/11/2026 22:26",
+      "actorEmail": "elena.conti@gmail.com",
+      "actorRole": "Co-editor",
+      "category": "permissions_changed",
+      "summary": "Eliminó al lector invitado.familiar@gmail.com de la lista de acceso",
+      "details": ""
+    },
+    {
+      "id": "log-1793841968758",
+      "timestamp": "04/11/2026 22:26",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "permissions_changed",
+      "summary": "Eliminó al lector rologuzman@gmail.com de la lista de acceso",
+      "details": ""
+    },
+    {
+      "id": "log-1793838830033",
+      "timestamp": "04/11/2026 21:33",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "layout_tidied",
+      "summary": "Ordenó y alineó automáticamente las tarjetas del lienzo",
+      "details": "Se organizaron los 14 familiares conservando todos los datos."
+    },
+    {
+      "id": "log-1793837458822",
+      "timestamp": "04/11/2026 21:10",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "permissions_changed",
+      "summary": "Añadió a rologuzman@gmail.com como Familiar Lector",
+      "details": ""
+    },
+    {
+      "id": "log-1793837251883",
+      "timestamp": "04/11/2026 21:07",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "layout_tidied",
+      "summary": "Ordenó y alineó automáticamente las tarjetas del lienzo",
+      "details": "Se organizaron los 14 familiares conservando todos los datos."
+    },
+    {
+      "id": "log-1793837242902",
+      "timestamp": "04/11/2026 21:07",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "layout_tidied",
+      "summary": "Ordenó y alineó automáticamente las tarjetas del lienzo",
+      "details": "Se organizaron los 14 familiares conservando todos los datos."
+    },
+    {
+      "id": "log-1793837237497",
+      "timestamp": "04/11/2026 21:07",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "member_edited",
+      "summary": "Editó los datos de Roberto Pascuale (Bisabuelo · Nivel 0)",
+      "details": "Rama: paterna · Origen: Andalucía, España"
+    },
+    {
+      "id": "log-1793837230832",
+      "timestamp": "04/11/2026 21:07",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "member_edited",
+      "summary": "Editó los datos de Carlos Mastropiero Conti (Bisabuelo · Nivel 0)",
+      "details": "Rama: materna · Origen: Vicenzo, Italia"
+    },
+    {
+      "id": "log-1793837185245",
+      "timestamp": "04/11/2026 21:06",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "approval_resolved",
+      "summary": "❌ Rechazó la solicitud de elena.conti@gmail.com para eliminar a Roberto Pascuale",
+      "details": "El familiar se mantiene en el árbol."
+    },
+    {
+      "id": "log-1793837170178",
+      "timestamp": "04/11/2026 21:06",
+      "actorEmail": "elena.conti@gmail.com",
+      "actorRole": "Co-editor",
+      "category": "approval_requested",
+      "summary": "Solicitó autorización al propietario para eliminar a Roberto Pascuale (Bisabuelo)",
+      "details": "Motivo indicado por el co-editor: Datos incorrectos"
+    },
+    {
+      "id": "log-1793837107385",
+      "timestamp": "04/11/2026 21:05",
+      "actorEmail": "elena.conti@gmail.com",
+      "actorRole": "Co-editor",
+      "category": "member_edited",
+      "summary": "Editó los datos de Roberto Pascuale (Bisabuelo · Nivel 0)",
+      "details": "Rama: materna · Origen: Andalucía, España"
+    },
+    {
+      "id": "log-1793837068704",
+      "timestamp": "04/11/2026 21:04",
+      "actorEmail": "elena.conti@gmail.com",
+      "actorRole": "Co-editor",
+      "category": "layout_tidied",
+      "summary": "Ordenó y alineó automáticamente las tarjetas del lienzo",
+      "details": "Se organizaron los 14 familiares conservando todos los datos."
+    },
+    {
+      "id": "log-1793837064693",
+      "timestamp": "04/11/2026 21:04",
+      "actorEmail": "elena.conti@gmail.com",
+      "actorRole": "Co-editor",
+      "category": "layout_tidied",
+      "summary": "Ordenó y alineó automáticamente las tarjetas del lienzo",
+      "details": "Se organizaron los 14 familiares conservando todos los datos."
+    },
+    {
+      "id": "log-1793837061862",
+      "timestamp": "04/11/2026 21:04",
+      "actorEmail": "elena.conti@gmail.com",
+      "actorRole": "Co-editor",
+      "category": "member_added",
+      "summary": "Agregó al árbol a Roberto Pascuale (Bisabuelo · Nivel 0)",
+      "details": "Rama: materna · Origen: Andalucía, España"
+    },
+    {
+      "id": "log-1793836886069",
+      "timestamp": "04/11/2026 21:01",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "layout_tidied",
+      "summary": "Ordenó y alineó automáticamente las tarjetas del lienzo",
+      "details": "Se organizaron los 13 familiares conservando todos los datos."
+    },
+    {
+      "id": "log-1793836875026",
+      "timestamp": "04/11/2026 21:01",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "layout_tidied",
+      "summary": "Ordenó y alineó automáticamente las tarjetas del lienzo",
+      "details": "Se organizaron los 13 familiares conservando todos los datos."
+    },
+    {
+      "id": "log-init-2",
+      "timestamp": "04/11/2026 19:30",
+      "actorEmail": "elena.conti@gmail.com",
+      "actorRole": "Co-editor",
+      "category": "media_uploaded",
+      "summary": "Subió fotografía 'En el mostrador de la Relojería Il Tempo' a Google Drive",
+      "details": "Familiar: Vittorio Conti · Optimizada a 15 KB"
+    },
+    {
+      "id": "log-init-1",
+      "timestamp": "04/11/2026 18:15",
+      "actorEmail": "martin.alvarez@gmail.com",
+      "actorRole": "Propietario",
+      "category": "permissions_changed",
+      "summary": "Creó el lienzo familiar y designó a elena.conti@gmail.com como Co-editora",
+      "details": "12 integrantes iniciales cargados en 3 generaciones"
+    }
+  ]
+}
