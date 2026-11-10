@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#7C4D33" />
   <title>Árbol Genealógico · Familia Álvarez – Conti</title>
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./styles.css?v=6" />
+  <link rel="stylesheet" href="./styles.css?v=9" />
 </head>
 <body>
   <!-- ========================================================================
@@ -584,11 +584,15 @@
           </label>
         </div>
 
+        <div class="nupcias-form-section">
+          <div class="nupcias-form-header">
+            <span>💍 Nupcias / Parejas (Actual ♥, Ex-pareja ♡ o Fallecida †)</span>
+            <button type="button" id="btn-add-partnership-row" class="btn-secondary btn-xs">➕ Agregar nupcia</button>
+          </div>
+          <div id="member-partnerships-list" class="partnerships-rows-container"></div>
+        </div>
+
         <div class="form-row">
-          <label>
-            ♥ Pareja / Cónyuge:
-            <select id="member-spouse-select"></select>
-          </label>
           <label>
             Color de Retrato:
             <select id="member-color-select">
@@ -599,6 +603,10 @@
               <option value="#7A5C75">Violeta Archivo</option>
               <option value="#2E5B88">Azul Marino</option>
             </select>
+          </label>
+          <label>
+            Lugar de origen:
+            <input type="text" id="member-place-input" placeholder="Ej: Areco / Lucca" />
           </label>
         </div>
 
@@ -613,16 +621,10 @@
           </label>
         </div>
 
-        <div class="form-row">
-          <label>
-            Lugar de origen:
-            <input type="text" id="member-place-input" placeholder="Ej: Areco / Lucca" />
-          </label>
-          <label>
-            Oficio / Vocación:
-            <input type="text" id="member-job-input" placeholder="Ej: Carpintero, Maestra..." />
-          </label>
-        </div>
+        <label>
+          Oficio / Vocación:
+          <input type="text" id="member-job-input" placeholder="Ej: Carpintero, Maestra..." />
+        </label>
 
         <label>
           Biografía:
@@ -678,7 +680,7 @@
   <!-- TOAST DE NOTIFICACIÓN -->
   <div id="toast" class="toast hidden"></div>
 
-  <script src="./fallback-data.js?v=6"></script>
-  <script src="./app.js?v=6"></script>
+  <script src="./fallback-data.js?v=9"></script>
+  <script src="./app.js?v=9"></script>
 </body>
 </html>

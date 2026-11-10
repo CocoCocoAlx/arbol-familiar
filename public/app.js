@@ -41,6 +41,7 @@ const state = {
   nodeDragOffsetX: 0,
   nodeDragOffsetY: 0,
   nodeMoved: false,
+  dragRafId: null,
 
   // Estado Pinch-to-Zoom multitáctil (2 dedos)
   isPinching: false,
@@ -52,6 +53,7 @@ const state = {
   // Estado del reproductor de voz en español
   speakingLetterId: null,
   speechTimer: null,
+  waveInterval: null,
   currentAudio: null,
   cursiveMode: true,
 
@@ -102,6 +104,31 @@ function nowFormatted() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, "0");
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function escapeHTML(val) {
+  return String(val ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getMemberVoiceConfig(member) {
+  const cfg = (member && member.voiceProfile) || {};
+  const espeakVoice = cfg.espeakVoice || cfg.preset || "es-419+m1";
+  const rawSpeed = Number(cfg.espeakSpeed || cfg.rate || 138);
+  const espeakSpeed = rawSpeed < 10 ? Math.round(rawSpeed * 140) : Math.round(rawSpeed);
+  const rawPitch = Number(cfg.espeakPitch || cfg.pitch || 48);
+  const espeakPitch = rawPitch < 10 ? Math.round(rawPitch * 48) : Math.max(25, Math.min(75, Math.round(rawPitch)));
+  return {
+    espeakVoice,
+    espeakSpeed,
+    espeakPitch,
+    label: cfg.label || `Voz en español de ${member?.name || "Familiar"}`,
+    sampleSource: cfg.sampleSource || cfg.timbreDescription || "Síntesis de voz familiar"
+  };
 }
 
 function addLocalHistoryEntry(category, summary, details = "") {
@@ -308,6 +335,39 @@ function updateMemberCountBadge() {
 /* ==========================================================================
    ORDENAMIENTO GEOMÉTRICO DEL LIENZO SIN BORRAR PARIENTES NUEVOS
    ========================================================================== */
+function getMemberPartnerships(member) {
+  if (!member) return [];
+  if (Array.isArray(member.partnerships) && member.partnerships.length > 0) {
+    return member.partnerships
+      .filter((p) => p && p.partnerId)
+      .map((p, idx) => ({
+        partnerId: p.partnerId,
+        order: Number(p.order || idx + 1),
+        status: p.status || "current",
+        period: p.period || ""
+      }));
+  }
+  if (member.spouseId) {
+    return [
+      {
+        partnerId: member.spouseId,
+        order: 1,
+        status: "current",
+        period: ""
+      }
+    ];
+  }
+  return [];
+}
+
+function arePartnersLinked(m1, m2) {
+  if (!m1 || !m2) return false;
+  return (
+    getMemberPartnerships(m1).some((p) => p.partnerId === m2.id) ||
+    getMemberPartnerships(m2).some((p) => p.partnerId === m1.id)
+  );
+}
+
 function tidyLayoutLocally() {
   if (!state.members || state.members.length === 0) return;
 
@@ -328,29 +388,123 @@ function tidyLayoutLocally() {
 
     const orderedRow = [];
     const visited = new Set();
+
     rowMembers.forEach((m) => {
       if (visited.has(m.id)) return;
-      visited.add(m.id);
-      orderedRow.push(m);
-      if (m.spouseId && byId[m.spouseId] && !visited.has(m.spouseId)) {
-        const sp = byId[m.spouseId];
-        if (Number(sp.generation ?? 1) === gen) {
-          visited.add(sp.id);
-          orderedRow.push(sp);
+      const mParts = getMemberPartnerships(m);
+      let hub = m;
+      if (mParts.length === 1) {
+        const other = byId[mParts[0].partnerId];
+        if (
+          other &&
+          Number(other.generation ?? 1) === gen &&
+          !visited.has(other.id) &&
+          getMemberPartnerships(other).length > 1
+        ) {
+          hub = other;
+        }
+      }
+
+      const hubParts = [...getMemberPartnerships(hub)].sort((a, b) => (a.order || 1) - (b.order || 1));
+      if (hubParts.length > 1) {
+        const leftPartners = hubParts.filter((p) => p.status === "previous" || p.status === "deceased");
+        const rightPartners = hubParts.filter((p) => p.status !== "previous" && p.status !== "deceased");
+
+        leftPartners.forEach((p) => {
+          const sp = byId[p.partnerId];
+          if (sp && !visited.has(sp.id) && Number(sp.generation ?? 1) === gen) {
+            visited.add(sp.id);
+            orderedRow.push(sp);
+          }
+        });
+        if (!visited.has(hub.id)) {
+          visited.add(hub.id);
+          orderedRow.push(hub);
+        }
+        rightPartners.forEach((p) => {
+          const sp = byId[p.partnerId];
+          if (sp && !visited.has(sp.id) && Number(sp.generation ?? 1) === gen) {
+            visited.add(sp.id);
+            orderedRow.push(sp);
+          }
+        });
+      } else {
+        visited.add(m.id);
+        orderedRow.push(m);
+        if (mParts.length === 1) {
+          const sp = byId[mParts[0].partnerId];
+          if (sp && !visited.has(sp.id) && Number(sp.generation ?? 1) === gen) {
+            visited.add(sp.id);
+            orderedRow.push(sp);
+          }
         }
       }
     });
 
-    let curX = 140;
-    orderedRow.forEach((m, idx) => {
-      m.x = curX;
-      m.y = rowY;
-      if (idx + 1 < orderedRow.length && m.spouseId === orderedRow[idx + 1].id) {
-        curX += 275;
-      } else {
-        curX += 345;
+    const hasParentsInTree =
+      rowIdx > 0 &&
+      orderedRow.some((m) => (m.parentIds || []).some((pid) => Boolean(byId[pid])));
+
+    if (hasParentsInTree) {
+      const groups = [];
+      let idx = 0;
+      while (idx < orderedRow.length) {
+        const curr = orderedRow[idx];
+        const pidsKey = (curr.parentIds || [])
+          .filter((pid) => Boolean(byId[pid]))
+          .sort()
+          .join("--");
+        const grp = [curr];
+        idx++;
+        while (idx < orderedRow.length) {
+          const nxt = orderedRow[idx];
+          const nxtKey = (nxt.parentIds || [])
+            .filter((pid) => Boolean(byId[pid]))
+            .sort()
+            .join("--");
+          if (pidsKey && nxtKey === pidsKey) {
+            grp.push(nxt);
+            idx++;
+          } else if (arePartnersLinked(grp[grp.length - 1], nxt)) {
+            grp.push(nxt);
+            idx++;
+          } else {
+            break;
+          }
+        }
+        groups.push({ pidsKey, grp });
       }
-    });
+
+      let minNextX = 100;
+      groups.forEach(({ pidsKey, grp }) => {
+        const step = 295;
+        const grpSpan = (grp.length - 1) * step;
+        let startX = minNextX;
+        if (pidsKey) {
+          const pids = pidsKey.split("--").filter(Boolean);
+          const parentXs = pids.map((pid) => byId[pid]?.x ?? 200);
+          const centerX = parentXs.reduce((a, b) => a + b, 0) / parentXs.length;
+          startX = Math.round(centerX - grpSpan / 2);
+        }
+        startX = Math.max(minNextX, startX);
+        grp.forEach((memberItem, i) => {
+          memberItem.x = startX + i * step;
+          memberItem.y = rowY;
+        });
+        minNextX = startX + grpSpan + 335;
+      });
+    } else {
+      let curX = orderedRow.length > 5 ? 100 : 240;
+      orderedRow.forEach((m, idx) => {
+        m.x = curX;
+        m.y = rowY;
+        if (idx + 1 < orderedRow.length && arePartnersLinked(m, orderedRow[idx + 1])) {
+          curX += 295;
+        } else {
+          curX += 355;
+        }
+      });
+    }
   });
 }
 
@@ -420,8 +574,8 @@ function renderGenerationBands() {
    ILUSTRACIONES SVG ULTRALIGERAS (RETRATOS Y FOTOS DE ÉPOCA)
    ========================================================================== */
 function renderPortraitSVG(member) {
-  const bg = member.avatarColor || "#8C5A3C";
-  const initials = member.avatarInitials || member.name.slice(0, 2).toUpperCase();
+  const bg = escapeHTML(member.avatarColor || "#8C5A3C");
+  const initials = escapeHTML(member.avatarInitials || (member.name || "").slice(0, 2).toUpperCase());
   const isElder = Number(member.generation) <= 1;
   const hairColor = isElder ? "#d9d2c5" : "#3d2b1f";
 
@@ -442,24 +596,24 @@ function renderVintagePhotoSVG(photo, member) {
   return `
     <svg viewBox="0 0 400 220" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="sepia-${photo.id}" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id="sepia-${escapeHTML(photo.id)}" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stop-color="#e8d8be" />
           <stop offset="100%" stop-color="#bfa582" />
         </linearGradient>
       </defs>
-      <rect width="400" height="220" fill="url(#sepia-${photo.id})" />
+      <rect width="400" height="220" fill="url(#sepia-${escapeHTML(photo.id)})" />
       <rect x="14" y="14" width="372" height="192" fill="none" stroke="#6e563a" stroke-width="1.5" stroke-dasharray="4 3" />
       <circle cx="135" cy="95" r="26" fill="#7c6244" opacity="0.55" />
       <path d="M90 185 C95 135, 175 135, 180 185 Z" fill="#634c32" opacity="0.65" />
       <rect x="215" y="65" width="120" height="85" rx="6" fill="#8c7150" opacity="0.35" stroke="#5b452d" stroke-width="2" />
       <text x="275" y="105" text-anchor="middle" fill="#473521" font-family="Georgia, serif" font-size="13" font-style="italic">
-        Archivo ${photo.year}
+        Archivo ${escapeHTML(photo.year)}
       </text>
       <text x="275" y="125" text-anchor="middle" fill="#5b452d" font-family="sans-serif" font-size="11" font-weight="bold">
-        ${member.name}
+        ${escapeHTML(member.name)}
       </text>
       <text x="26" y="196" fill="#4a3826" font-family="Georgia, serif" font-size="11">
-        ☁️ Google Drive · Miniatura optimizada (${photo.sizeKB || 14} KB)
+        ☁️ Google Drive · Miniatura optimizada (${escapeHTML(photo.sizeKB || 14)} KB)
       </text>
     </svg>
   `;
@@ -480,6 +634,7 @@ function renderNodes() {
   const layer = document.getElementById("nodes-layer");
   layer.innerHTML = "";
 
+  const byId = Object.fromEntries(state.members.map((m) => [m.id, m]));
   const pendingDeleteIds = new Set(
     (state.pendingApprovals || []).map((r) => r.targetMemberId)
   );
@@ -490,6 +645,18 @@ function renderNodes() {
     if (member.id === state.selectedMemberId) card.classList.add("selected");
     if (!matchesFilter(member)) card.classList.add("dimmed");
 
+    const partnerships = getMemberPartnerships(member);
+    const isOnlyExPartner =
+      partnerships.length === 1 && partnerships[0].status === "previous";
+    const isOnlyDeceasedPartner =
+      partnerships.length === 1 &&
+      partnerships[0].status === "deceased" &&
+      member.deathYear &&
+      member.deathYear !== "Presente";
+
+    if (isOnlyExPartner) card.classList.add("is-ex-partner");
+    if (isOnlyDeceasedPartner) card.classList.add("is-deceased-partner");
+
     card.style.left = `${member.x}px`;
     card.style.top = `${member.y}px`;
     card.dataset.id = member.id;
@@ -499,6 +666,23 @@ function renderNodes() {
     const videosCount = (member.videos || []).length;
 
     let badgesHTML = "";
+    if (partnerships.length >= 2) {
+      badgesHTML += `<span class="nupcias-pill multi" title="Persona con ${partnerships.length} uniones/nupcias registradas">💍 ${partnerships.length} nupcias</span>`;
+    } else if (partnerships.length === 1) {
+      const p = partnerships[0];
+      const partnerObj = byId[p.partnerId];
+      const partnerTotal = partnerObj ? getMemberPartnerships(partnerObj).length : 1;
+      const ordPrefix = partnerTotal > 1 || (p.order && p.order > 1) ? `${p.order || 1}ª ` : "";
+      if (p.status === "previous") {
+        badgesHTML += `<span class="nupcias-pill ex" title="Ex-pareja (${ordPrefix}nupcias)">${ordPrefix}♡ Ex-pareja</span>`;
+      } else if (p.status === "deceased") {
+        const isDeceasedSelf = member.deathYear && member.deathYear !== "Presente";
+        badgesHTML += `<span class="nupcias-pill deceased" title="Unión con cónyuge fallecido/a">${ordPrefix}† ${isDeceasedSelf ? "Cónyuge †" : "Viudo/a"}</span>`;
+      } else if (partnerTotal > 1 || (p.order && p.order > 1)) {
+        badgesHTML += `<span class="nupcias-pill current" title="Pareja actual en ${p.order || 2}ª nupcias">${p.order || 2}ª ♥ Actual</span>`;
+      }
+    }
+
     if (pendingDeleteIds.has(member.id)) {
       badgesHTML += `<span class="media-pill" style="background:#fdeceb;border-color:#f3b7b3;color:#8f2620;">⏳ En revisión</span>`;
     } else if (lettersCount > 0) {
@@ -517,12 +701,12 @@ function renderNodes() {
       <div class="node-top">
         <div class="node-avatar">${renderPortraitSVG(member)}</div>
         <div class="node-info">
-          <span class="node-role-pill">${member.role}</span>
-          <div class="node-name" title="${member.name}">${member.name}</div>
-          <div class="node-years">${member.birthYear} – ${member.deathYear}</div>
+          <span class="node-role-pill">${escapeHTML(member.role)}</span>
+          <div class="node-name" title="${escapeHTML(member.name)}">${escapeHTML(member.name)}</div>
+          <div class="node-years">${escapeHTML(member.birthYear)} – ${escapeHTML(member.deathYear)}</div>
         </div>
       </div>
-      <div class="node-occupation" title="${member.occupation}">${member.occupation}</div>
+      <div class="node-occupation" title="${escapeHTML(member.occupation)}">${escapeHTML(member.occupation)}</div>
       <div class="node-badges">${badgesHTML}</div>
     `;
 
@@ -535,31 +719,115 @@ function renderConnections() {
   const byId = Object.fromEntries(state.members.map((m) => [m.id, m]));
   let pathsHTML = "";
 
-  const drawnSpouses = new Set();
+  const drawnUnions = new Set();
+  const unionMidpoints = {};
+
   state.members.forEach((m) => {
-    if (m.spouseId && byId[m.spouseId]) {
-      const pairKey = [m.id, m.spouseId].sort().join("--");
-      if (drawnSpouses.has(pairKey)) return;
-      drawnSpouses.add(pairKey);
+    const mParts = getMemberPartnerships(m);
+    mParts.forEach((p) => {
+      const spouse = byId[p.partnerId];
+      if (!spouse) return;
 
-      const spouse = byId[m.spouseId];
-      const left = m.x < spouse.x ? m : spouse;
-      const right = m.x < spouse.x ? spouse : m;
+      const pairKey = [m.id, spouse.id].sort().join("--");
+      if (drawnUnions.has(pairKey)) return;
+      drawnUnions.add(pairKey);
 
-      const x1 = left.x + NODE_WIDTH;
-      const y1 = left.y + NODE_HEIGHT / 2;
-      const x2 = right.x;
-      const y2 = right.y + NODE_HEIGHT / 2;
-      const midX = (x1 + x2) / 2;
-      const midY = (y1 + y2) / 2;
+      const spouseParts = getMemberPartnerships(spouse);
+      const reciprocal = spouseParts.find((sp) => sp.partnerId === m.id);
+      const order = Math.max(Number(p.order || 1), Number(reciprocal?.order || 1));
+      const status = p.status || reciprocal?.status || "current";
+      const isMultiNupcias = mParts.length > 1 || spouseParts.length > 1 || order > 1;
 
+      const left = m.x <= spouse.x ? m : spouse;
+      const right = m.x <= spouse.x ? spouse : m;
+
+      // Detectar si existe otra tarjeta intermedia en la misma fila entre ambos miembros de la pareja
+      const hasCardBetween = state.members.some(
+        (other) =>
+          other.id !== left.id &&
+          other.id !== right.id &&
+          Math.abs((other.y || 0) - (left.y || 0)) < 80 &&
+          other.x > left.x + 40 &&
+          other.x < right.x - 40
+      );
+
+      let strokeColor = "#b5835a";
+      let strokeDash = "";
+      let strokeWidth = "2.8";
+      let badgeBg = "#fdf0ed";
+      let badgeBorder = "#b5835a";
+      let badgeInk = "#7c3224";
+      let symbol = "♥";
+
+      if (status === "previous") {
+        strokeColor = "#8e8276";
+        strokeDash = 'stroke-dasharray="5 5"';
+        strokeWidth = "2.2";
+        badgeBg = "#f2efe9";
+        badgeBorder = "#8e8276";
+        badgeInk = "#4e463e";
+        symbol = "♡";
+      } else if (status === "deceased") {
+        strokeColor = "#7d6856";
+        strokeDash = 'stroke-dasharray="8 4"';
+        strokeWidth = "2.3";
+        badgeBg = "#efe8df";
+        badgeBorder = "#7d6856";
+        badgeInk = "#4a3c30";
+        symbol = "†";
+      }
+
+      const labelText = isMultiNupcias || status !== "current" ? `${order}ª ${symbol}` : symbol;
+      const pillWidth = labelText.length > 2 ? 44 : 26;
+      const pillHeight = 20;
+
+      let midX, midY;
+      let childOriginX, childOriginY;
+
+      if (!hasCardBetween) {
+        const x1 = left.x + NODE_WIDTH;
+        const y1 = left.y + NODE_HEIGHT / 2;
+        const x2 = right.x;
+        const y2 = right.y + NODE_HEIGHT / 2;
+        midX = (x1 + x2) / 2;
+        midY = (y1 + y2) / 2;
+        childOriginX = midX;
+        childOriginY = midY;
+
+        pathsHTML += `
+          <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+                stroke="${strokeColor}" stroke-width="${strokeWidth}" ${strokeDash} />
+        `;
+      } else {
+        // Si hay una tarjeta en el medio, trazar un arco superior limpio para no cruzar la tarjeta central
+        const x1 = left.x + NODE_WIDTH / 2;
+        const y1 = left.y;
+        const x2 = right.x + NODE_WIDTH / 2;
+        const y2 = right.y;
+        midX = (x1 + x2) / 2;
+        const ctrlY = Math.min(y1, y2) - 48;
+        midY = 0.25 * y1 + 0.5 * ctrlY + 0.25 * y2;
+        childOriginX = midX;
+        childOriginY = Math.max(left.y, right.y) + NODE_HEIGHT / 2;
+
+        pathsHTML += `
+          <path d="M ${x1} ${y1} Q ${midX} ${ctrlY} ${x2} ${y2}"
+                fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" ${strokeDash} />
+        `;
+      }
+
+      unionMidpoints[pairKey] = { x: childOriginX, y: childOriginY, status };
+
+      // Ubicar el rectángulo redondeado POR ENCIMA de la línea para dejar la línea 100% libre y visible
+      const badgeCenterY = midY - 19;
       pathsHTML += `
-        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-              stroke="#b5835a" stroke-width="2.5" stroke-dasharray="5 4" />
-        <circle cx="${midX}" cy="${midY}" r="9" fill="#f7eedb" stroke="#b5835a" stroke-width="1.8" />
-        <text x="${midX}" y="${midY + 3.5}" text-anchor="middle" font-size="10">♥</text>
+        <rect x="${midX - pillWidth / 2}" y="${badgeCenterY - pillHeight / 2}" width="${pillWidth}" height="${pillHeight}" rx="6"
+              fill="${badgeBg}" stroke="${badgeBorder}" stroke-width="1.5" />
+        <text x="${midX}" y="${badgeCenterY + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="${badgeInk}">
+          ${labelText}
+        </text>
       `;
-    }
+    });
   });
 
   state.members.forEach((child) => {
@@ -570,8 +838,14 @@ function renderConnections() {
     if (parents.length >= 2) {
       const p1 = parents[0];
       const p2 = parents[1];
-      originX = (p1.x + p2.x + NODE_WIDTH) / 2;
-      originY = (p1.y + p2.y + NODE_HEIGHT) / 2;
+      const pairKey = [p1.id, p2.id].sort().join("--");
+      if (unionMidpoints[pairKey]) {
+        originX = unionMidpoints[pairKey].x;
+        originY = unionMidpoints[pairKey].y;
+      } else {
+        originX = (p1.x + p2.x + NODE_WIDTH) / 2;
+        originY = (p1.y + p2.y + NODE_HEIGHT) / 2;
+      }
     } else {
       originX = parents[0].x + NODE_WIDTH / 2;
       originY = parents[0].y + NODE_HEIGHT;
@@ -583,7 +857,8 @@ function renderConnections() {
 
     pathsHTML += `
       <path d="M ${originX} ${originY} C ${originX} ${ctrlY}, ${targetX} ${ctrlY}, ${targetX} ${targetY}"
-            fill="none" stroke="#8c6d53" stroke-width="2.4" stroke-linecap="round" opacity="0.78" />
+            fill="none" stroke="#8c6d53" stroke-width="2.4" stroke-linecap="round" opacity="0.82" />
+      <circle cx="${originX}" cy="${originY}" r="3.2" fill="#8c6d53" />
       <circle cx="${targetX}" cy="${targetY}" r="4" fill="#8c4f30" />
     `;
   });
@@ -724,9 +999,14 @@ function setupCanvasInteractions() {
         card.style.left = `${member.x}px`;
         card.style.top = `${member.y}px`;
       }
-      renderGenerationBands();
-      renderConnections();
-      renderMinimap();
+      if (!state.dragRafId) {
+        state.dragRafId = requestAnimationFrame(() => {
+          state.dragRafId = null;
+          renderGenerationBands();
+          renderConnections();
+          renderMinimap();
+        });
+      }
     }
   });
 
@@ -965,7 +1245,7 @@ function openMemberDrawer(memberId) {
     if (pendingReq) {
       alertBox.classList.remove("hidden");
       alertBox.innerHTML = `
-        ⏳ <strong>Eliminación en validación:</strong> Solicitada por <em>${pendingReq.requestedBy}</em> (${pendingReq.reason}).
+        ⏳ <strong>Eliminación en validación:</strong> Solicitada por <em>${escapeHTML(pendingReq.requestedBy)}</em> (${escapeHTML(pendingReq.reason)}).
         ${
           isCurrentUserOwner()
             ? `<div style="margin-top:6px;display:flex;gap:6px;">
@@ -990,7 +1270,7 @@ function openMemberDrawer(memberId) {
 
   const milestonesEl = document.getElementById("bio-milestones");
   milestonesEl.innerHTML = (member.milestones || [])
-    .map((ms) => `<li><strong>${ms.year}:</strong> ${ms.event}</li>`)
+    .map((ms) => `<li><strong>${escapeHTML(ms.year)}:</strong> ${escapeHTML(ms.event)}</li>`)
     .join("");
 
   const letters = member.letters || [];
@@ -1023,17 +1303,56 @@ function renderFamilyRelationshipChips(member) {
   const byId = Object.fromEntries(state.members.map((m) => [m.id, m]));
   const chips = [];
 
-  if (member.spouseId && byId[member.spouseId]) {
-    const s = byId[member.spouseId];
-    chips.push({ label: `♥ Pareja: ${s.name}`, id: s.id });
-  }
-  (member.parentIds || []).forEach((pid) => {
-    if (byId[pid]) chips.push({ label: `⬆️ Padre/Madre: ${byId[pid].name}`, id: pid });
+  const partnerships = [...getMemberPartnerships(member)].sort(
+    (a, b) => (a.order || 1) - (b.order || 1)
+  );
+  const hasMultipleNupcias = partnerships.length > 1;
+
+  partnerships.forEach((p) => {
+    const s = byId[p.partnerId];
+    if (!s) return;
+    const sParts = getMemberPartnerships(s);
+    const showOrder = hasMultipleNupcias || sParts.length > 1 || (p.order && p.order > 1);
+    const ordTag = showOrder ? ` (${p.order || 1}ª nupcias)` : "";
+    const periodTag = p.period ? ` · ${p.period}` : "";
+
+    if (p.status === "previous") {
+      chips.push({
+        label: `♡ Ex-pareja${ordTag}: ${s.name}${periodTag}`,
+        id: s.id,
+        cls: "chip-ex"
+      });
+    } else if (p.status === "deceased") {
+      const isDeceasedPartner = s.deathYear && s.deathYear !== "Presente";
+      const roleTxt = isDeceasedPartner ? "Pareja fallecida" : "Cónyuge (viudo/a)";
+      chips.push({
+        label: `† ${roleTxt}${ordTag}: ${s.name}${periodTag}`,
+        id: s.id,
+        cls: "chip-deceased"
+      });
+    } else {
+      chips.push({
+        label: `♥ Pareja actual${ordTag}: ${s.name}${periodTag}`,
+        id: s.id,
+        cls: "chip-current"
+      });
+    }
   });
+
+  (member.parentIds || []).forEach((pid) => {
+    if (byId[pid]) chips.push({ label: `⬆️ Padre/Madre: ${byId[pid].name}`, id: pid, cls: "" });
+  });
+
   state.members
     .filter((m) => (m.parentIds || []).includes(member.id))
     .forEach((child) => {
-      chips.push({ label: `⬇️ Hijo/a: ${child.name}`, id: child.id });
+      const coParentId = (child.parentIds || []).find((pid) => pid !== member.id && byId[pid]);
+      const coParentTxt = coParentId ? ` (con ${byId[coParentId].name})` : "";
+      chips.push({
+        label: `⬇️ Hijo/a: ${child.name}${coParentTxt}`,
+        id: child.id,
+        cls: ""
+      });
     });
 
   if (chips.length === 0) {
@@ -1042,7 +1361,7 @@ function renderFamilyRelationshipChips(member) {
   }
 
   container.innerHTML = chips
-    .map((c) => `<button class="rel-chip" data-target="${c.id}">${c.label}</button>`)
+    .map((c) => `<button class="rel-chip ${escapeHTML(c.cls || "")}" data-target="${escapeHTML(c.id)}">${escapeHTML(c.label)}</button>`)
     .join("");
 
   container.querySelectorAll(".rel-chip").forEach((btn) => {
@@ -1053,10 +1372,7 @@ function renderFamilyRelationshipChips(member) {
 function renderMemberLetters(member) {
   const container = document.getElementById("letters-container");
   const letters = member.letters || [];
-  const voice = member.voiceProfile || {
-    label: `Voz en español de ${member.name}`,
-    sampleSource: "Síntesis de voz familiar"
-  };
+  const voice = getMemberVoiceConfig(member);
 
   const uploadBtnHTML = canCurrentUserEdit()
     ? `<button class="btn-primary" id="btn-upload-letter-inline">📤 + Subir Carta a Drive</button>`
@@ -1065,7 +1381,7 @@ function renderMemberLetters(member) {
   if (letters.length === 0) {
     container.innerHTML = `
       <div class="bio-story-card" style="text-align:center;">
-        <p style="margin-bottom:12px;">Todavía no hay cartas manuscritas para <strong>${member.name}</strong>, pero su voz en español está lista.</p>
+        <p style="margin-bottom:12px;">Todavía no hay cartas manuscritas para <strong>${escapeHTML(member.name)}</strong>, pero su voz en español está lista.</p>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <button class="btn-secondary" id="btn-listen-bio-voice">🔊 Escuchar biografía en español</button>
           ${uploadBtnHTML}
@@ -1092,37 +1408,37 @@ function renderMemberLetters(member) {
           .join("");
 
         const paragraphsHTML = (letter.paragraphs || [])
-          .map((p, idx) => `<p data-pidx="${idx}">${p}</p>`)
+          .map((p, idx) => `<p data-pidx="${idx}">${escapeHTML(p)}</p>`)
           .join("");
 
         const scanImgHTML = letter.scanImageUrl
           ? `<div style="margin-bottom:10px;border-radius:8px;overflow:hidden;border:1px solid #cbbba4;">
-               <img src="${letter.scanImageUrl}" alt="${letter.title}" style="width:100%;max-height:200px;object-fit:cover;display:block;" />
+               <img src="${escapeHTML(letter.scanImageUrl)}" alt="${escapeHTML(letter.title)}" style="width:100%;max-height:200px;object-fit:cover;display:block;" />
              </div>`
           : "";
 
         return `
-          <div class="letter-block" data-letter-id="${letter.id}">
+          <div class="letter-block" data-letter-id="${escapeHTML(letter.id)}">
             <div class="voice-player-box">
               <div class="voice-player-top">
-                <button class="btn-play-voice" data-play-letter="${letter.id}" title="Leer carta en voz alta">
+                <button class="btn-play-voice" data-play-letter="${escapeHTML(letter.id)}" title="Leer carta en voz alta">
                   ▶
                 </button>
                 <div class="voice-meta">
-                  <div class="voice-title">🔊 ${voice.label}</div>
-                  <div class="voice-subtitle">${voice.sampleSource} · Español (${letter.driveSizeKB || 18} KB)</div>
+                  <div class="voice-title">🔊 ${escapeHTML(voice.label)}</div>
+                  <div class="voice-subtitle">${escapeHTML(voice.sampleSource)} · Español (${escapeHTML(letter.driveSizeKB || 18)} KB)</div>
                 </div>
               </div>
-              <div class="waveform-bars" id="waveform-${letter.id}">
+              <div class="waveform-bars" id="waveform-${escapeHTML(letter.id)}">
                 ${bars}
               </div>
             </div>
 
-            <div class="paper-sheet ${letter.paperType || "aged-cream"}">
+            <div class="paper-sheet ${escapeHTML(letter.paperType || "aged-cream")}">
               <div class="paper-header">
                 <div>
-                  <strong>${letter.title}</strong>
-                  <div class="paper-date">${letter.location || ""} · ${letter.date}</div>
+                  <strong>${escapeHTML(letter.title)}</strong>
+                  <div class="paper-date">${escapeHTML(letter.location || "")} · ${escapeHTML(letter.date)}</div>
                 </div>
                 <div class="paper-stamp">Drive</div>
               </div>
@@ -1130,13 +1446,13 @@ function renderMemberLetters(member) {
               ${scanImgHTML}
 
               <div class="paper-paragraphs ${state.cursiveMode ? "cursive-mode" : "print-mode"}"
-                   id="paragraphs-${letter.id}"
-                   style="color: ${letter.inkColor || "#251e19"}">
+                   id="paragraphs-${escapeHTML(letter.id)}"
+                   style="color: ${escapeHTML(letter.inkColor || "#251e19")}">
                 ${paragraphsHTML}
               </div>
 
               <div class="paper-toolbar">
-                <span>☁️ ${letter.drivePath || "Google Drive del Propietario"}</span>
+                <span>☁️ ${escapeHTML(letter.drivePath || "Google Drive del Propietario")}</span>
                 <button class="btn-ghost btn-toggle-font" style="padding:3px 8px;font-size:11px;">
                   ${state.cursiveMode ? "🔤 Imprenta" : "✒️ Manuscrita"}
                 </button>
@@ -1252,14 +1568,12 @@ function speakLetter(member, letter, playBtn) {
   const paragraphsContainer = document.getElementById(`paragraphs-${letter.id}`);
   const pElements = paragraphsContainer ? Array.from(paragraphsContainer.querySelectorAll("p")) : [];
   const paragraphs = letter.paragraphs || [];
-  const voiceCfg = member.voiceProfile || {};
-  const espeakVoice = voiceCfg.espeakVoice || "es-419+m3";
-  const espeakSpeed = voiceCfg.espeakSpeed || 136;
-  const espeakPitch = voiceCfg.espeakPitch || 45;
+  const { espeakVoice, espeakSpeed, espeakPitch } = getMemberVoiceConfig(member);
 
-  const waveInterval = setInterval(() => {
+  state.waveInterval = setInterval(() => {
     if (state.speakingLetterId !== letter.id) {
-      clearInterval(waveInterval);
+      clearInterval(state.waveInterval);
+      state.waveInterval = null;
       return;
     }
     if (waveform) {
@@ -1302,10 +1616,7 @@ function speakLetter(member, letter, playBtn) {
 function speakTextWithMemberVoice(member, paragraphs, tempId) {
   stopVoicePlayback();
   state.speakingLetterId = tempId;
-  const voiceCfg = member.voiceProfile || {};
-  const espeakVoice = voiceCfg.espeakVoice || "es-419+m1";
-  const espeakSpeed = voiceCfg.espeakSpeed || 140;
-  const espeakPitch = voiceCfg.espeakPitch || 48;
+  const { espeakVoice, espeakSpeed, espeakPitch } = getMemberVoiceConfig(member);
   const text = paragraphs.join(" ");
 
   const staticBioWav = `./audio/bio-${member.id}.wav`;
@@ -1319,6 +1630,10 @@ function speakTextWithMemberVoice(member, paragraphs, tempId) {
 
 function stopVoicePlayback() {
   state.speakingLetterId = null;
+  if (state.waveInterval) {
+    clearInterval(state.waveInterval);
+    state.waveInterval = null;
+  }
   if (state.speechTimer) {
     clearTimeout(state.speechTimer);
     state.speechTimer = null;
@@ -1358,7 +1673,7 @@ function renderMemberPhotos(member) {
   if (photos.length === 0) {
     container.innerHTML = `
       ${addPhotoBtn}
-      <p style="color:var(--ink-secondary);font-size:13px;">Aún no hay fotografías en la carpeta de Drive de ${member.name}.</p>
+      <p style="color:var(--ink-secondary);font-size:13px;">Aún no hay fotografías en la carpeta de Drive de ${escapeHTML(member.name)}.</p>
     `;
   } else {
     container.innerHTML =
@@ -1366,19 +1681,19 @@ function renderMemberPhotos(member) {
       photos
         .map((ph) => {
           const visualContent = ph.imageUrl
-            ? `<img src="${ph.imageUrl}" alt="${ph.title}" style="width:100%;height:100%;object-fit:cover;display:block;" />`
+            ? `<img src="${escapeHTML(ph.imageUrl)}" alt="${escapeHTML(ph.title)}" style="width:100%;height:100%;object-fit:cover;display:block;" />`
             : renderVintagePhotoSVG(ph, member);
 
           return `
             <div class="photo-card">
               <div class="photo-frame">${visualContent}</div>
               <div class="photo-meta">
-                <span>${ph.title}</span>
-                <span class="years-badge">${ph.year}</span>
+                <span>${escapeHTML(ph.title)}</span>
+                <span class="years-badge">${escapeHTML(ph.year)}</span>
               </div>
-              <p class="photo-caption">${ph.caption}</p>
+              <p class="photo-caption">${escapeHTML(ph.caption)}</p>
               <div style="margin-top:6px;font-size:11px;color:var(--accent-green);">
-                ☁️ ${ph.drivePath || `Drive / Fotos / ${member.name}`} (${ph.sizeKB || 15} KB)
+                ☁️ ${escapeHTML(ph.drivePath || `Drive / Fotos / ${member.name}`)} (${escapeHTML(ph.sizeKB || 15)} KB)
               </div>
             </div>
           `;
@@ -1403,7 +1718,7 @@ function renderMemberVideos(member) {
   if (videos.length === 0) {
     container.innerHTML = `
       ${addVideoBtn}
-      <p style="color:var(--ink-secondary);font-size:13px;">No hay videos familiares registrados para ${member.name}.</p>
+      <p style="color:var(--ink-secondary);font-size:13px;">No hay videos familiares registrados para ${escapeHTML(member.name)}.</p>
     `;
   } else {
     container.innerHTML =
@@ -1412,18 +1727,18 @@ function renderMemberVideos(member) {
         .map((v) => {
           const isYoutube = v.uploadedToYoutube !== false && Boolean(v.youtubeUnlistedId || v.uploadedToYoutube);
           const sourceBadge = isYoutube
-            ? `🎬 YouTube Oculto (ID: ${v.youtubeUnlistedId || "Activo"})`
+            ? `🎬 YouTube Oculto (ID: ${escapeHTML(v.youtubeUnlistedId || "Activo")})`
             : `☁️ Solo en Google Drive del Propietario`;
 
           const videoPlayerBody = v.videoUrl
-            ? `<video src="${v.videoUrl}" controls style="width:100%;max-height:200px;background:#000;"></video>`
+            ? `<video src="${escapeHTML(v.videoUrl)}" controls style="width:100%;max-height:200px;background:#000;"></video>`
             : `
-              <div class="video-screen" id="vscreen-${v.id}">
+              <div class="video-screen" id="vscreen-${escapeHTML(v.id)}">
                 <div style="font-size:30px;margin-bottom:6px;">${isYoutube ? "🎬" : "☁️"}</div>
-                <strong style="font-size:14px;">${v.title} (${v.year})</strong>
-                <p style="font-size:12px;color:#cbbba4;margin-top:4px;max-width:340px;">${v.description}</p>
-                <button class="btn-primary" style="margin-top:10px;" data-play-video="${v.id}">
-                  ▶ ${isYoutube ? "Reproducir YouTube" : "Reproducir Drive"} (${v.duration || "Video"})
+                <strong style="font-size:14px;">${escapeHTML(v.title)} (${escapeHTML(v.year)})</strong>
+                <p style="font-size:12px;color:#cbbba4;margin-top:4px;max-width:340px;">${escapeHTML(v.description)}</p>
+                <button class="btn-primary" style="margin-top:10px;" data-play-video="${escapeHTML(v.id)}">
+                  ▶ ${isYoutube ? "Reproducir YouTube" : "Reproducir Drive"} (${escapeHTML(v.duration || "Video")})
                 </button>
               </div>
             `;
@@ -1479,16 +1794,16 @@ function renderCompactListView() {
         .filter((m) => Number(m.generation ?? 1) === gen && matchesFilter(m))
         .map(
           (m) => `
-          <div class="family-node" style="position:static;width:100%;" data-list-member="${m.id}">
+          <div class="family-node" style="position:static;width:100%;" data-list-member="${escapeHTML(m.id)}">
             <div class="node-top">
               <div class="node-avatar">${renderPortraitSVG(m)}</div>
               <div class="node-info">
-                <span class="node-role-pill">${m.role}</span>
-                <div class="node-name">${m.name}</div>
-                <div class="node-years">${m.birthYear} – ${m.deathYear}</div>
+                <span class="node-role-pill">${escapeHTML(m.role)}</span>
+                <div class="node-name">${escapeHTML(m.name)}</div>
+                <div class="node-years">${escapeHTML(m.birthYear)} – ${escapeHTML(m.deathYear)}</div>
               </div>
             </div>
-            <div class="node-occupation">${m.occupation}</div>
+            <div class="node-occupation">${escapeHTML(m.occupation)}</div>
           </div>
         `
         )
@@ -1639,9 +1954,9 @@ function setupSidebarAndToolbarEvents() {
       resultsBox.innerHTML = matches
         .map(
           (m) => `
-          <div class="search-item" data-search-id="${m.id}">
-            <strong>${m.name}</strong>
-            <span style="color:var(--ink-muted);font-size:11.5px;">${m.role}</span>
+          <div class="search-item" data-search-id="${escapeHTML(m.id)}">
+            <strong>${escapeHTML(m.name)}</strong>
+            <span style="color:var(--ink-muted);font-size:11.5px;">${escapeHTML(m.role)}</span>
           </div>
         `
         )
@@ -2121,19 +2436,19 @@ function renderApprovalsModalContent() {
       <div class="perm-item" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
           <span class="role-badge" style="background:#fdeceb;color:#8f2620;">🗑️ Baja de Pariente</span>
-          <span style="font-size:11px;color:var(--ink-muted);">${req.createdAt}</span>
+          <span style="font-size:11px;color:var(--ink-muted);">${escapeHTML(req.createdAt)}</span>
         </div>
         <div style="font-size:13px;">
-          <strong>${req.requestedBy}</strong> solicita eliminar a <strong>${req.targetMemberName}</strong> (${req.targetMemberRole}).
+          <strong>${escapeHTML(req.requestedBy)}</strong> solicita eliminar a <strong>${escapeHTML(req.targetMemberName)}</strong> (${escapeHTML(req.targetMemberRole)}).
         </div>
         <div style="font-size:12px;color:var(--ink-secondary);background:#fff;padding:6px 10px;border-radius:6px;border:1px solid var(--border-soft);">
-          💬 <strong>Motivo:</strong> ${req.reason || "Sin motivo especificado"}
+          💬 <strong>Motivo:</strong> ${escapeHTML(req.reason || "Sin motivo especificado")}
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;flex-wrap:wrap;">
           ${
             isOwner
-              ? `<button class="btn-ghost" data-reject-req="${req.id}">❌ Rechazar</button>
-                 <button class="btn-primary" style="background:#8f2620;border-color:#8f2620;" data-approve-req="${req.id}">✅ Aprobar Baja</button>`
+              ? `<button class="btn-ghost" data-reject-req="${escapeHTML(req.id)}">❌ Rechazar</button>
+                 <button class="btn-primary" style="background:#8f2620;border-color:#8f2620;" data-approve-req="${escapeHTML(req.id)}">✅ Aprobar Baja</button>`
               : `<span style="font-size:11.5px;color:var(--accent-warm);font-weight:600;">⏳ Esperando al Propietario</span>`
           }
         </div>
@@ -2263,16 +2578,16 @@ function renderHistoryModalContent() {
         <div class="perm-item" style="flex-direction:column;align-items:stretch;gap:5px;padding:10px 12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
             <span style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;${rolePillStyle}">
-              ${isCoEditor ? "✍️ Co-editor" : "👑 Propietario"} · ${item.actorEmail}
+              ${isCoEditor ? "✍️ Co-editor" : "👑 Propietario"} · ${escapeHTML(item.actorEmail)}
             </span>
-            <span style="font-size:10.5px;color:var(--ink-muted);">🕒 ${item.timestamp}</span>
+            <span style="font-size:10.5px;color:var(--ink-muted);">🕒 ${escapeHTML(item.timestamp)}</span>
           </div>
           <div style="font-size:12.5px;font-weight:600;color:var(--ink-primary);margin-top:2px;">
-            ${iconByCat[item.category] || "📌"} ${item.summary}
+            ${iconByCat[item.category] || "📌"} ${escapeHTML(item.summary)}
           </div>
           ${
             item.details
-              ? `<div style="font-size:11.5px;color:var(--ink-secondary);">${item.details}</div>`
+              ? `<div style="font-size:11.5px;color:var(--ink-secondary);">${escapeHTML(item.details)}</div>`
               : ""
           }
         </div>
@@ -2321,6 +2636,13 @@ function setupUploadModal() {
     const file = fileInput.files && fileInput.files[0];
     if (!file) {
       state.pendingUploadDataUrl = null;
+      return;
+    }
+    const maxFileBytes = 18 * 1024 * 1024; // 18 MB crudos (~24 MB en Base64)
+    if (file.size > maxFileBytes) {
+      fileInput.value = "";
+      state.pendingUploadDataUrl = null;
+      showToast("⚠️ El archivo supera el límite de 18 MB permitido.");
       return;
     }
     const reader = new FileReader();
@@ -2445,7 +2767,7 @@ function openUploadModal(defaultMemberId, defaultType = "photo") {
 
   const select = document.getElementById("upload-member-select");
   select.innerHTML = state.members
-    .map((m) => `<option value="${m.id}" ${m.id === defaultMemberId ? "selected" : ""}>${m.name} (${m.role})</option>`)
+    .map((m) => `<option value="${escapeHTML(m.id)}" ${m.id === defaultMemberId ? "selected" : ""}>${escapeHTML(m.name)} (${escapeHTML(m.role)})</option>`)
     .join("");
 
   document.getElementById("upload-type-select").value = defaultType;
@@ -2520,10 +2842,17 @@ function setupMemberModal() {
     const suggestedRole =
       lowerGen === 4 ? "Hijo/a o Sobrino/a" : lowerGen === 5 ? "Nieto/a" : lowerGen >= 6 ? "Bisnieto/a" : "Hijo/a";
 
+    const parentParts = getMemberPartnerships(parent);
+    const defaultCoParent =
+      parent.spouseId ||
+      parentParts.find((p) => p.status === "current")?.partnerId ||
+      parentParts[parentParts.length - 1]?.partnerId ||
+      "";
+
     openMemberModal({
       mode: "create",
       presetParent1: parent.id,
-      presetParent2: parent.spouseId || "",
+      presetParent2: defaultCoParent,
       presetGen: lowerGen,
       presetBranch: parent.branch || "paterna",
       presetRole: suggestedRole
@@ -2533,13 +2862,25 @@ function setupMemberModal() {
   document.getElementById("btn-add-spouse-to-member")?.addEventListener("click", () => {
     const partner = state.members.find((m) => m.id === state.selectedMemberId);
     if (!partner) return;
+    const existingCount = getMemberPartnerships(partner).length;
+    const nextOrder = existingCount + 1;
+    const ordSuffix = nextOrder > 1 ? ` (${nextOrder}ª ♥)` : "";
     openMemberModal({
       mode: "create",
       presetSpouse: partner.id,
+      presetSpouseOrder: nextOrder,
+      presetSpouseStatus: "current",
       presetGen: Number(partner.generation ?? 2),
       presetBranch: partner.branch || "paterna",
-      presetRole: `Pareja de ${partner.name.split(" ")[0]}`
+      presetRole: `Pareja de ${partner.name.split(" ")[0]}${ordSuffix}`
     });
+  });
+
+  document.getElementById("btn-add-partnership-row")?.addEventListener("click", () => {
+    const currentId = document.getElementById("member-id-input")?.value || "";
+    const container = document.getElementById("member-partnerships-list");
+    const nextOrder = (container?.querySelectorAll(".partnership-row").length || 0) + 1;
+    appendPartnershipRow({ partnerId: "", order: nextOrder, status: "current" }, currentId);
   });
 
   document.getElementById("btn-close-member-modal")?.addEventListener("click", () => modal.classList.add("hidden"));
@@ -2569,7 +2910,11 @@ function setupMemberModal() {
     const c2 = document.getElementById("member-child2-select").value;
     const childrenIds = [c1, c2].filter((v, idx, arr) => v && arr.indexOf(v) === idx);
 
-    const spouseId = document.getElementById("member-spouse-select").value || null;
+    const partnerships = collectPartnershipsFromModal(existingMember);
+    const currentPartnership = partnerships.find((p) => p.status === "current");
+    const spouseId = currentPartnership ? currentPartnership.partnerId : null;
+    const primaryPartnerId = spouseId || partnerships[0]?.partnerId || null;
+
     const avatarColor = document.getElementById("member-color-select").value;
     const birthYear = document.getElementById("member-birth-input").value.trim();
     const deathYear = document.getElementById("member-death-input").value.trim() || "Presente";
@@ -2587,10 +2932,11 @@ function setupMemberModal() {
     let y = existingMember ? existingMember.y : getIdealYForGeneration(generation);
 
     if (!isEdit) {
-      if (spouseId) {
-        const sp = state.members.find((m) => m.id === spouseId);
+      if (primaryPartnerId) {
+        const sp = state.members.find((m) => m.id === primaryPartnerId);
         if (sp) {
-          x = sp.x + 270;
+          const isLeftPartner = partnerships[0]?.status === "previous" || partnerships[0]?.status === "deceased";
+          x = isLeftPartner ? Math.max(40, sp.x - 275) : sp.x + 275;
           y = sp.y;
         }
       } else if (childrenIds.length > 0) {
@@ -2600,10 +2946,13 @@ function setupMemberModal() {
           y = ch.y - 270;
         }
       } else if (parentIds.length > 0) {
-        const pObj = state.members.find((m) => m.id === parentIds[0]);
-        if (pObj) {
-          x = pObj.x + 30;
-          y = pObj.y + 270;
+        const pObjs = parentIds.map((pid) => state.members.find((m) => m.id === pid)).filter(Boolean);
+        if (pObjs.length >= 2) {
+          x = Math.round((pObjs[0].x + pObjs[1].x) / 2);
+          y = pObjs[0].y + 270;
+        } else if (pObjs.length === 1) {
+          x = pObjs[0].x + 30;
+          y = pObjs[0].y + 270;
         }
       }
 
@@ -2626,6 +2975,7 @@ function setupMemberModal() {
       x,
       y,
       spouseId,
+      partnerships,
       parentIds,
       avatarColor,
       avatarInitials,
@@ -2645,10 +2995,29 @@ function setupMemberModal() {
       videos: existingMember?.videos || []
     };
 
-    if (spouseId) {
-      const spObj = state.members.find((m) => m.id === spouseId);
-      if (spObj) spObj.spouseId = memberPayload.id;
-    }
+    // Sincronizar nupcias bidireccionalmente en memoria local
+    const partnerMap = Object.fromEntries(partnerships.map((p) => [p.partnerId, p]));
+    state.members.forEach((m) => {
+      if (m.id === memberPayload.id) return;
+      let mParts = [...getMemberPartnerships(m)];
+      if (partnerMap[m.id]) {
+        const pInfo = partnerMap[m.id];
+        const rec = {
+          partnerId: memberPayload.id,
+          order: pInfo.order,
+          status: pInfo.status,
+          period: pInfo.period || ""
+        };
+        const rIdx = mParts.findIndex((mp) => mp.partnerId === memberPayload.id);
+        if (rIdx !== -1) mParts[rIdx] = rec;
+        else mParts.push(rec);
+      } else {
+        mParts = mParts.filter((mp) => mp.partnerId !== memberPayload.id);
+      }
+      m.partnerships = mParts;
+      const mCurr = mParts.find((mp) => mp.status === "current");
+      m.spouseId = mCurr ? mCurr.partnerId : null;
+    });
     childrenIds.forEach((cid) => {
       const childObj = state.members.find((m) => m.id === cid);
       if (childObj) {
@@ -2700,6 +3069,72 @@ function setupMemberModal() {
   });
 }
 
+function appendPartnershipRow(part = {}, excludeMemberId = "") {
+  const container = document.getElementById("member-partnerships-list");
+  if (!container) return;
+
+  const row = document.createElement("div");
+  row.className = "partnership-row";
+
+  const partnerOptions =
+    `<option value="">— Seleccionar pareja —</option>` +
+    state.members
+      .filter((m) => !excludeMemberId || m.id !== excludeMemberId)
+      .map(
+        (m) =>
+          `<option value="${escapeHTML(m.id)}" ${m.id === part.partnerId ? "selected" : ""}>${escapeHTML(m.name)} (${escapeHTML(m.role)})</option>`
+      )
+      .join("");
+
+  const orderVal = Number(part.order || 1);
+  const statusVal = part.status || "current";
+
+  row.innerHTML = `
+    <select class="part-partner-select" title="Familiar pareja">${partnerOptions}</select>
+    <select class="part-order-select" title="Orden de nupcias">
+      <option value="1" ${orderVal === 1 ? "selected" : ""}>1ª nupcias</option>
+      <option value="2" ${orderVal === 2 ? "selected" : ""}>2ª nupcias</option>
+      <option value="3" ${orderVal === 3 ? "selected" : ""}>3ª nupcias</option>
+      <option value="4" ${orderVal === 4 ? "selected" : ""}>4ª nupcias</option>
+    </select>
+    <select class="part-status-select" title="Estado del vínculo">
+      <option value="current" ${statusVal === "current" ? "selected" : ""}>♥ Pareja Actual</option>
+      <option value="previous" ${statusVal === "previous" ? "selected" : ""}>♡ Ex-pareja</option>
+      <option value="deceased" ${statusVal === "deceased" ? "selected" : ""}>† Pareja Fallecida</option>
+    </select>
+    <button type="button" class="partnership-remove-btn" title="Quitar vínculo">✕</button>
+  `;
+
+  row.querySelector(".partnership-remove-btn")?.addEventListener("click", () => {
+    row.remove();
+  });
+
+  container.appendChild(row);
+}
+
+function collectPartnershipsFromModal(existingMember = null) {
+  const container = document.getElementById("member-partnerships-list");
+  if (!container) return [];
+
+  const existingByPartner = Object.fromEntries(
+    getMemberPartnerships(existingMember).map((p) => [p.partnerId, p])
+  );
+  const result = [];
+  const seen = new Set();
+
+  container.querySelectorAll(".partnership-row").forEach((row, idx) => {
+    const partnerId = row.querySelector(".part-partner-select")?.value || "";
+    if (!partnerId || seen.has(partnerId)) return;
+    seen.add(partnerId);
+    const order = parseInt(row.querySelector(".part-order-select")?.value || String(idx + 1), 10) || idx + 1;
+    const status = row.querySelector(".part-status-select")?.value || "current";
+    const period = existingByPartner[partnerId]?.period || "";
+    result.push({ partnerId, order, status, period });
+  });
+
+  return result;
+}
+
 function openMemberModal(opts = {}) {
   if (!canCurrentUserEdit()) {
     showToast("👁️ Estás en Modo Solo Lectura.");
@@ -2713,20 +3148,20 @@ function openMemberModal(opts = {}) {
     `<option value="">— Ninguno —</option>` +
     state.members
       .filter((m) => !member || m.id !== member.id)
-      .map((m) => `<option value="${m.id}">${m.name} (${m.role})</option>`)
+      .map((m) => `<option value="${escapeHTML(m.id)}">${escapeHTML(m.name)} (${escapeHTML(m.role)})</option>`)
       .join("");
 
   const p1Select = document.getElementById("member-parent1-select");
   const p2Select = document.getElementById("member-parent2-select");
   const c1Select = document.getElementById("member-child1-select");
   const c2Select = document.getElementById("member-child2-select");
-  const spouseSelect = document.getElementById("member-spouse-select");
+  const partnershipsListEl = document.getElementById("member-partnerships-list");
 
   p1Select.innerHTML = optionsHTML;
   p2Select.innerHTML = optionsHTML;
   c1Select.innerHTML = optionsHTML;
   c2Select.innerHTML = optionsHTML;
-  spouseSelect.innerHTML = optionsHTML;
+  if (partnershipsListEl) partnershipsListEl.innerHTML = "";
 
   if (opts.mode === "edit" && member) {
     titleEl.textContent = `✏️ Editar a ${member.name}`;
@@ -2748,7 +3183,13 @@ function openMemberModal(opts = {}) {
     const currentChildren = state.members.filter((m) => (m.parentIds || []).includes(member.id));
     c1Select.value = currentChildren[0]?.id || "";
     c2Select.value = currentChildren[1]?.id || "";
-    spouseSelect.value = member.spouseId || "";
+
+    const existingParts = getMemberPartnerships(member);
+    if (existingParts.length > 0) {
+      existingParts.forEach((p) => appendPartnershipRow(p, member.id));
+    } else {
+      appendPartnershipRow({ partnerId: "", order: 1, status: "current" }, member.id);
+    }
   } else {
     titleEl.textContent = "👤 Agregar Familiar";
     document.getElementById("form-member").reset();
@@ -2760,7 +3201,18 @@ function openMemberModal(opts = {}) {
     if (opts.presetParent1) p1Select.value = opts.presetParent1;
     if (opts.presetParent2) p2Select.value = opts.presetParent2;
     if (opts.presetChild1) c1Select.value = opts.presetChild1;
-    if (opts.presetSpouse) spouseSelect.value = opts.presetSpouse;
+    if (opts.presetSpouse) {
+      appendPartnershipRow(
+        {
+          partnerId: opts.presetSpouse,
+          order: opts.presetSpouseOrder || 1,
+          status: opts.presetSpouseStatus || "current"
+        },
+        ""
+      );
+    } else {
+      appendPartnershipRow({ partnerId: "", order: 1, status: "current" }, "");
+    }
   }
 
   modal.classList.remove("hidden");

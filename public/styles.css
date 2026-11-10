@@ -803,6 +803,49 @@ html, body {
   color: #7c3f1c;
 }
 
+.nupcias-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+}
+
+.nupcias-pill.multi {
+  background: #f5e6d3;
+  border: 1px solid #d4a373;
+  color: #7c421e;
+}
+
+.nupcias-pill.current {
+  background: #fbe9e7;
+  border: 1px solid #e2b4ae;
+  color: #8c342b;
+}
+
+.nupcias-pill.ex {
+  background: #ebe7e1;
+  border: 1px dashed #9e9387;
+  color: #5e554c;
+}
+
+.nupcias-pill.deceased {
+  background: #e9e1d8;
+  border: 1px solid #b5a392;
+  color: #544436;
+}
+
+.family-node.is-ex-partner {
+  border-style: dashed;
+  border-color: #a39586;
+  background: #faf6ef;
+}
+
+.family-node.is-deceased-partner {
+  border-color: #9c8875;
+  background: #f7f1e7;
+}
+
 /* HUD INFERIOR COMPACTO */
 .canvas-hud-bottom {
   position: fixed;
@@ -1191,6 +1234,89 @@ html, body {
   border: 1px solid var(--border-strong);
   font-size: 11.5px;
   cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.rel-chip:hover {
+  border-color: var(--accent-warm);
+  transform: translateY(-1px);
+}
+
+.rel-chip.chip-current {
+  background: #fdf0ed;
+  border-color: #dfb0a8;
+  color: #6e261e;
+}
+
+.rel-chip.chip-ex {
+  background: #f1ede7;
+  border-style: dashed;
+  border-color: #9e9387;
+  color: #4f473f;
+}
+
+.rel-chip.chip-deceased {
+  background: #efe8df;
+  border-color: #b09d8b;
+  color: #4a3c30;
+}
+
+.nupcias-form-section {
+  background: #f8f2e8;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.nupcias-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.btn-xs {
+  padding: 4px 9px !important;
+  font-size: 11px !important;
+  border-radius: 7px !important;
+}
+
+.partnerships-rows-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.partnership-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.75fr 1.15fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.partnership-row select {
+  margin-top: 0 !important;
+  padding: 6px 8px !important;
+  font-size: 12px !important;
+}
+
+.partnership-remove-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid #e6b8b5;
+  background: #fdeceb;
+  color: #8f2620;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .milestone-list {

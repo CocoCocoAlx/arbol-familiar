@@ -1,11 +1,11 @@
-const CACHE_NAME = "arbol-familiar-v6";
+const CACHE_NAME = "arbol-familiar-v9";
 const ASSETS = [
   "/",
   "/index.html",
-  "/styles.css",
-  "/app.js",
-  "/manifest.json",
-  "/api/family"
+  "/styles.css?v=9",
+  "/app.js?v=9",
+  "/fallback-data.js?v=9",
+  "/manifest.json"
 ];
 
 self.addEventListener("install", (event) => {
@@ -26,11 +26,34 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+
+  // No guardar audio dinámico de síntesis de voz en el caché permanente
+  if (url.pathname === "/api/tts") return;
+
+  // Para /api/family usar siempre red primero y guardar solo como respaldo offline
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
         return response;
       })
       .catch(() => caches.match(event.request))

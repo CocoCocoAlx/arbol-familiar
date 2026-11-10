@@ -11,9 +11,10 @@ import os
 import re
 import socket
 import subprocess
+import threading
 import time
 from datetime import datetime
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -23,6 +24,16 @@ UPLOADS_DIR = PUBLIC_DIR / "uploads"
 DATA_FILE = BASE_DIR / "data" / "familia.json"
 STATE_FILE = BASE_DIR / "data" / "familia_estado.json"
 PORT = int(os.environ.get("PORT", 8765))
+MAX_BODY_BYTES = 25 * 1024 * 1024  # 25 MB máximo por petición POST
+DATA_LOCK = threading.RLock()
+
+
+class PayloadTooLargeError(Exception):
+    pass
+
+
+class BadJsonBodyError(Exception):
+    pass
 
 
 def now_str():
@@ -53,33 +64,39 @@ def default_history():
 
 
 def load_family_data():
-    """Carga el archivo de estado si existe, o el archivo base original."""
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        base_data = json.load(f)
+    """Carga el archivo de estado si existe, o el archivo base original (protegido por lock)."""
+    with DATA_LOCK:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            base_data = json.load(f)
 
-    if STATE_FILE.exists():
-        try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                state_data = json.load(f)
-            meta = base_data.get("metadata", {})
-            meta.update(state_data.get("metadata", {}))
-            state_data["metadata"] = meta
-            state_data.setdefault("pendingApprovals", [])
-            state_data.setdefault("historyLog", default_history())
-            return state_data
-        except Exception:
-            pass
+        if STATE_FILE.exists():
+            try:
+                with open(STATE_FILE, "r", encoding="utf-8") as f:
+                    state_data = json.load(f)
+                meta = base_data.get("metadata", {})
+                meta.update(state_data.get("metadata", {}))
+                state_data["metadata"] = meta
+                state_data.setdefault("pendingApprovals", [])
+                state_data.setdefault("historyLog", default_history())
+                return state_data
+            except Exception as exc:
+                print(f"[WARN] Estado corrupto en {STATE_FILE}, usando base: {exc}")
 
-    base_data.setdefault("pendingApprovals", [])
-    base_data.setdefault("historyLog", default_history())
-    return base_data
+        base_data.setdefault("pendingApprovals", [])
+        base_data.setdefault("historyLog", default_history())
+        return base_data
 
 
 def save_family_data(data):
-    """Guarda todos los cambios (parientes, posiciones, permisos, validaciones e historial) localmente."""
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    """Guarda todos los cambios de manera atómica (tmp + os.replace) para evitar corrupción de datos."""
+    with DATA_LOCK:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp_file = STATE_FILE.with_suffix(".json.tmp")
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, STATE_FILE)
 
 
 def get_user_role(data, user_email):
@@ -117,10 +134,34 @@ def add_history_entry(data, actor_email, category, summary, details=""):
     return entry
 
 
+def get_member_partnerships(member):
+    partnerships = member.get("partnerships")
+    if isinstance(partnerships, list) and len(partnerships) > 0:
+        return partnerships
+    sp_id = member.get("spouseId")
+    if sp_id:
+        return [{"partnerId": sp_id, "order": 1, "status": "current", "period": ""}]
+    return []
+
+
+def are_partners_linked(m1, m2):
+    id1, id2 = m1.get("id"), m2.get("id")
+    if not id1 or not id2:
+        return False
+    for p in get_member_partnerships(m1):
+        if p.get("partnerId") == id2:
+            return True
+    for p in get_member_partnerships(m2):
+        if p.get("partnerId") == id1:
+            return True
+    return False
+
+
 def tidy_family_layout(members):
     """
-    Reordena geométricamente las tarjetas de TODOS los familiares actuales (incluyendo los nuevos)
-    por nivel generacional, rama y pareja, SIN borrar ningún pariente ni archivo.
+    Reordena geométricamente las tarjetas de TODOS los familiares actuales (incluyendo n-nupcias)
+    por nivel generacional, rama y pareja, ubicando ex-parejas/fallecidos a un lado, pareja actual
+    al otro, e hijos centrados debajo de la unión parental correspondiente.
     """
     if not members:
         return members
@@ -138,30 +179,197 @@ def tidy_family_layout(members):
 
         ordered_row = []
         visited = set()
+
         for m in row_members:
             if m["id"] in visited:
                 continue
-            visited.add(m["id"])
-            ordered_row.append(m)
-            sp_id = m.get("spouseId")
-            if sp_id and sp_id in by_id and sp_id not in visited:
-                sp = by_id[sp_id]
-                if int(sp.get("generation", 1)) == gen:
-                    visited.add(sp_id)
-                    ordered_row.append(sp)
 
-        # Distribuir horizontalmente de forma simétrica y prolija
-        cur_x = 140
-        for idx, m in enumerate(ordered_row):
-            m["x"] = cur_x
-            m["y"] = row_y
-            # Si el siguiente es su pareja, dejar espacio corto de matrimonio (270px); si no, espacio amplio (340px)
-            if idx + 1 < len(ordered_row) and m.get("spouseId") == ordered_row[idx + 1]["id"]:
-                cur_x += 275
+            # Si este miembro es pareja única de alguien que tiene múltiples nupcias en la misma generación,
+            # usar al miembro con múltiples nupcias como núcleo del grupo
+            m_parts = get_member_partnerships(m)
+            hub = m
+            if len(m_parts) == 1:
+                other_id = m_parts[0].get("partnerId")
+                other = by_id.get(other_id)
+                if (
+                    other
+                    and int(other.get("generation", 1)) == gen
+                    and other["id"] not in visited
+                    and len(get_member_partnerships(other)) > 1
+                ):
+                    hub = other
+
+            hub_parts = sorted(get_member_partnerships(hub), key=lambda p: int(p.get("order", 1)))
+            if len(hub_parts) > 1:
+                # Ubicar ex-parejas / parejas fallecidas a la izquierda del núcleo y pareja actual a la derecha
+                left_partners = [
+                     p for p in hub_parts if p.get("status") in ("previous", "deceased")
+                ]
+                right_partners = [
+                    p for p in hub_parts if p.get("status") not in ("previous", "deceased")
+                ]
+                for p in left_partners:
+                    pid = p.get("partnerId")
+                    if pid in by_id and pid not in visited and int(by_id[pid].get("generation", 1)) == gen:
+                        visited.add(pid)
+                        ordered_row.append(by_id[pid])
+                if hub["id"] not in visited:
+                    visited.add(hub["id"])
+                    ordered_row.append(hub)
+                for p in right_partners:
+                    pid = p.get("partnerId")
+                    if pid in by_id and pid not in visited and int(by_id[pid].get("generation", 1)) == gen:
+                        visited.add(pid)
+                        ordered_row.append(by_id[pid])
             else:
-                cur_x += 345
+                visited.add(m["id"])
+                ordered_row.append(m)
+                if len(m_parts) == 1:
+                    sp_id = m_parts[0].get("partnerId")
+                    if sp_id and sp_id in by_id and sp_id not in visited:
+                        sp = by_id[sp_id]
+                        if int(sp.get("generation", 1)) == gen:
+                            visited.add(sp_id)
+                            ordered_row.append(sp)
+
+        # Distribuir horizontalmente respetando la unión parental si tienen padres en la fila superior
+        has_parents_in_tree = any(
+            any(pid in by_id for pid in (m.get("parentIds") or [])) for m in ordered_row
+        )
+        if has_parents_in_tree and row_idx > 0:
+            # Agrupar por conjunto de padres para centrar hermanos bajo su unión parental
+            groups = []
+            idx = 0
+            while idx < len(ordered_row):
+                curr = ordered_row[idx]
+                pids = tuple(sorted(pid for pid in (curr.get("parentIds") or []) if pid in by_id))
+                grp = [curr]
+                idx += 1
+                while idx < len(ordered_row):
+                    nxt = ordered_row[idx]
+                    nxt_pids = tuple(sorted(pid for pid in (nxt.get("parentIds") or []) if pid in by_id))
+                    if pids and nxt_pids == pids:
+                        grp.append(nxt)
+                        idx += 1
+                    elif are_partners_linked(grp[-1], nxt):
+                        grp.append(nxt)
+                        idx += 1
+                    else:
+                        break
+                groups.append((pids, grp))
+
+            min_next_x = 100
+            for pids, grp in groups:
+                step = 295
+                grp_span = (len(grp) - 1) * step
+                if pids:
+                    parent_xs = [by_id[pid].get("x", 200) for pid in pids if pid in by_id]
+                    center_x = sum(parent_xs) / len(parent_xs)
+                    start_x = round(center_x - grp_span / 2)
+                else:
+                    start_x = min_next_x
+                start_x = max(min_next_x, start_x)
+                for i, member_item in enumerate(grp):
+                    member_item["x"] = start_x + i * step
+                    member_item["y"] = row_y
+                min_next_x = start_x + grp_span + 335
+        else:
+            cur_x = 100 if len(ordered_row) > 5 else 240
+            for idx, m in enumerate(ordered_row):
+                m["x"] = cur_x
+                m["y"] = row_y
+                if idx + 1 < len(ordered_row) and are_partners_linked(m, ordered_row[idx + 1]):
+                    cur_x += 295
+                else:
+                    cur_x += 355
 
     return members
+
+
+def sync_member_into_tree(members, updated_member, children_ids=None):
+    """
+    Inserta o actualiza un familiar en la lista `members`, normalizando sus nupcias (`partnerships`),
+    sincronizando recíprocamente a todas las parejas vinculadas y vinculando hijos seleccionados.
+    Retorna True si el miembro ya existía (edición) o False si es nuevo (alta).
+    """
+    member_id = updated_member["id"]
+    replaced = False
+    for idx, existing in enumerate(members):
+        if existing.get("id") == member_id:
+            members[idx] = updated_member
+            replaced = True
+            break
+    if not replaced:
+        members.append(updated_member)
+
+    raw_partnerships = updated_member.get("partnerships")
+    if not isinstance(raw_partnerships, list):
+        sp_legacy = updated_member.get("spouseId")
+        raw_partnerships = (
+            [{"partnerId": sp_legacy, "order": 1, "status": "current", "period": ""}]
+            if sp_legacy
+            else []
+        )
+    cleaned_partnerships = []
+    seen_pids = set()
+    for idx_p, p in enumerate(raw_partnerships):
+        pid = (p.get("partnerId") or "").strip()
+        if not pid or pid == member_id or pid in seen_pids:
+            continue
+        seen_pids.add(pid)
+        cleaned_partnerships.append(
+            {
+                "partnerId": pid,
+                "order": int(p.get("order") or (idx_p + 1)),
+                "status": p.get("status") or "current",
+                "period": (p.get("period") or "").strip(),
+            }
+        )
+    updated_member["partnerships"] = cleaned_partnerships
+    current_partner = next(
+        (p["partnerId"] for p in cleaned_partnerships if p.get("status") == "current"),
+        None,
+    )
+    updated_member["spouseId"] = current_partner
+
+    partner_map = {p["partnerId"]: p for p in cleaned_partnerships}
+    for m in members:
+        if m["id"] == member_id:
+            continue
+        m_parts = list(get_member_partnerships(m))
+        if m["id"] in partner_map:
+            p_info = partner_map[m["id"]]
+            reciprocal = {
+                "partnerId": member_id,
+                "order": p_info["order"],
+                "status": p_info["status"],
+                "period": p_info.get("period", ""),
+            }
+            replaced_rec = False
+            for i_mp, mp in enumerate(m_parts):
+                if mp.get("partnerId") == member_id:
+                    m_parts[i_mp] = reciprocal
+                    replaced_rec = True
+                    break
+            if not replaced_rec:
+                m_parts.append(reciprocal)
+        else:
+            m_parts = [mp for mp in m_parts if mp.get("partnerId") != member_id]
+        m["partnerships"] = m_parts
+        m_curr = next(
+            (mp["partnerId"] for mp in m_parts if mp.get("status") == "current"),
+            None,
+        )
+        m["spouseId"] = m_curr
+
+    if isinstance(children_ids, list) and len(children_ids) > 0:
+        for m in members:
+            if m["id"] in children_ids:
+                pids = m.setdefault("parentIds", [])
+                if member_id not in pids:
+                    pids.append(member_id)
+
+    return replaced
 
 
 def remove_member_from_tree(data, target_id):
@@ -173,6 +381,10 @@ def remove_member_from_tree(data, target_id):
     for m in data["members"]:
         if m.get("spouseId") == target_id:
             m["spouseId"] = None
+        if isinstance(m.get("partnerships"), list):
+            m["partnerships"] = [
+                p for p in m["partnerships"] if p.get("partnerId") != target_id
+            ]
         if "parentIds" in m and target_id in m["parentIds"]:
             m["parentIds"] = [pid for pid in m["parentIds"] if pid != target_id]
     # Limpiar solicitudes pendientes asociadas a ese miembro
@@ -230,11 +442,21 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _read_body_json(self):
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            raise BadJsonBodyError("Content-Length inválido")
         if length <= 0:
             return {}
-        raw = self.rfile.read(length).decode("utf-8")
-        return json.loads(raw)
+        if length > MAX_BODY_BYTES:
+            raise PayloadTooLargeError(
+                f"El archivo supera el límite permitido de {MAX_BODY_BYTES // (1024 * 1024)} MB"
+            )
+        try:
+            raw = self.rfile.read(length).decode("utf-8")
+            return json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BadJsonBodyError(f"Cuerpo JSON malformado: {exc}")
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -242,6 +464,19 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/family":
             data = load_family_data()
             return self._send_json(data)
+
+        if parsed.path == "/fallback-data.js":
+            data = load_family_data()
+            js_body = f"window.FALLBACK_FAMILY_DATA = {json.dumps(data, ensure_ascii=False)};\n".encode(
+                "utf-8"
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(js_body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(js_body)
+            return
 
         if parsed.path == "/api/tts":
             qs = parse_qs(parsed.query)
@@ -290,6 +525,15 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        try:
+            with DATA_LOCK:
+                return self._handle_post()
+        except PayloadTooLargeError as exc:
+            return self._send_json({"ok": False, "error": str(exc)}, 413)
+        except BadJsonBodyError as exc:
+            return self._send_json({"ok": False, "error": str(exc)}, 400)
+
+    def _handle_post(self):
         parsed = urlparse(self.path)
 
         # 1. Gestión de Permisos (Propietario gestiona todo; Co-editores gestionan Lectores)
@@ -504,34 +748,7 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
                 return self._send_json({"ok": False, "error": "Familiar inválido"}, 400)
 
             members = data.get("members", [])
-            member_id = updated_member["id"]
-
-            replaced = False
-            for idx, existing in enumerate(members):
-                if existing.get("id") == member_id:
-                    members[idx] = updated_member
-                    replaced = True
-                    break
-            if not replaced:
-                members.append(updated_member)
-
-            # Sincronizar cónyuge bidireccional
-            spouse_id = updated_member.get("spouseId")
-            for m in members:
-                if m["id"] == member_id:
-                    continue
-                if spouse_id and m["id"] == spouse_id:
-                    m["spouseId"] = member_id
-                elif not spouse_id and m.get("spouseId") == member_id:
-                    m["spouseId"] = None
-
-            # Sincronizar hijos seleccionados hacia abajo
-            if isinstance(children_ids, list) and len(children_ids) > 0:
-                for m in members:
-                    if m["id"] in children_ids:
-                        pids = m.setdefault("parentIds", [])
-                        if member_id not in pids:
-                            pids.append(member_id)
+            replaced = sync_member_into_tree(members, updated_member, children_ids)
 
             action_cat = "member_edited" if replaced else "member_added"
             action_verb = "Editó los datos de" if replaced else "Agregó al árbol a"
@@ -691,8 +908,8 @@ def get_local_ip():
 
 if __name__ == "__main__":
     local_ip = get_local_ip()
-    HTTPServer.allow_reuse_address = True
-    server = HTTPServer(("0.0.0.0", PORT), FamilyTreeHandler)
+    ThreadingHTTPServer.allow_reuse_address = True
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), FamilyTreeHandler)
     print("=" * 64)
     print("🌳 ÁRBOL GENEALÓGICO INTERACTIVO - SERVIDOR LOCAL ACTIVO")
     print("=" * 64)

@@ -1,5 +1,4 @@
 __pycache__/
-*.py[cod]
-*$py.class
-.DS_Store
-.env
+*.pyc
+data/familia_estado.json
+data/familia_estado.json.tmp

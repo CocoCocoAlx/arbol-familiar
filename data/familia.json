@@ -30,7 +30,7 @@
       "deathYear": "2018",
       "birthPlace": "San Antonio de Areco, Argentina",
       "occupation": "Maestro carpintero y bandoneonista",
-      "x": 180,
+      "x": 240,
       "y": 110,
       "spouseId": "abuela-pat",
       "parentIds": [],
@@ -111,6 +111,14 @@
           "youtubeUnlistedId": "yt-unlisted-hector-1994",
           "description": "Digitalizado de cinta VHS-C. De este video se tomó la muestra limpia de voz para leer sus cartas."
         }
+      ],
+      "partnerships": [
+        {
+          "partnerId": "abuela-pat",
+          "order": 1,
+          "status": "current",
+          "period": "1962–2018"
+        }
       ]
     },
     {
@@ -124,7 +132,7 @@
       "deathYear": "2021",
       "birthPlace": "Mercedes, Buenos Aires",
       "occupation": "Maestra rural de escuela primaria",
-      "x": 450,
+      "x": 535,
       "y": 110,
       "spouseId": "abuelo-pat",
       "parentIds": [],
@@ -188,7 +196,15 @@
           "sizeKB": 12
         }
       ],
-      "videos": []
+      "videos": [],
+      "partnerships": [
+        {
+          "partnerId": "abuelo-pat",
+          "order": 1,
+          "status": "current",
+          "period": "1962–2018"
+        }
+      ]
     },
     {
       "id": "abuelo-mat",
@@ -201,7 +217,7 @@
       "deathYear": "2015",
       "birthPlace": "Lucca, Toscana, Italia",
       "occupation": "Relojero de precisión y fotógrafo aficionado",
-      "x": 920,
+      "x": 890,
       "y": 110,
       "spouseId": "abuela-mat",
       "parentIds": [],
@@ -270,6 +286,14 @@
           "youtubeUnlistedId": "yt-unlisted-vittorio-2008",
           "description": "Grabado con teléfono celular y subido en modo oculto con streaming adaptativo."
         }
+      ],
+      "partnerships": [
+        {
+          "partnerId": "abuela-mat",
+          "order": 1,
+          "status": "current",
+          "period": "1965–2021"
+        }
       ]
     },
     {
@@ -283,7 +307,7 @@
       "deathYear": "Presente",
       "birthPlace": "La Plata, Argentina",
       "occupation": "Ilustradora botánica y acuarelista",
-      "x": 1190,
+      "x": 1185,
       "y": 110,
       "spouseId": "abuelo-mat",
       "parentIds": [],
@@ -342,6 +366,68 @@
           "sizeKB": 13
         }
       ],
+      "videos": [],
+      "partnerships": [
+        {
+          "partnerId": "abuelo-mat",
+          "order": 1,
+          "status": "current",
+          "period": "1965–2021"
+        }
+      ]
+    },
+    {
+      "id": "pareja-tia-pat-1",
+      "name": "Raúl Ferreyra",
+      "nickname": "El Tío Raúl",
+      "role": "1ª Nupcias de Marta (†)",
+      "generation": 2,
+      "branch": "paterna",
+      "birthYear": "1964",
+      "deathYear": "2014",
+      "birthPlace": "San Antonio de Areco, Buenos Aires",
+      "residence": "La Plata, Buenos Aires",
+      "occupation": "Luthier, ebanista y guitarrista criollo",
+      "avatarColor": "#6D5442",
+      "x": 100,
+      "y": 380,
+      "spouseId": null,
+      "partnerships": [
+        {
+          "partnerId": "tia-pat",
+          "order": 1,
+          "status": "deceased",
+          "period": "1991–2014"
+        }
+      ],
+      "parentIds": [],
+      "voiceProfile": {
+        "preset": "es-419+m2",
+        "pitch": 102,
+        "rate": 134,
+        "timbreDescription": "Voz serena de taller, pausada y cálida"
+      },
+      "bio": "Luthier y artesano de maderas nobles. Compartió más de veinte años de vida con Marta Álvarez, con quien tuvo a Lucas. En su taller de La Plata enseñó a sus sobrinos el oficio del cepillo y el lustre a muñeca.",
+      "milestones": [
+        {
+          "year": "1964",
+          "event": "Nace en San Antonio de Areco."
+        },
+        {
+          "year": "1991",
+          "event": "Contrae matrimonio con Marta Álvarez."
+        },
+        {
+          "year": "1994",
+          "event": "Nace su hijo Lucas Álvarez."
+        },
+        {
+          "year": "2014",
+          "event": "Fallece en La Plata dejando su taller de guitarras a la familia."
+        }
+      ],
+      "letters": [],
+      "photos": [],
       "videos": []
     },
     {
@@ -355,7 +441,7 @@
       "deathYear": "Presente",
       "birthPlace": "San Antonio de Areco",
       "occupation": "Profesora de Historia y archivista",
-      "x": 120,
+      "x": 395,
       "y": 380,
       "spouseId": null,
       "parentIds": [
@@ -387,7 +473,15 @@
       ],
       "letters": [],
       "photos": [],
-      "videos": []
+      "videos": [],
+      "partnerships": [
+        {
+          "partnerId": "pareja-tia-pat-1",
+          "order": 1,
+          "status": "deceased",
+          "period": "1991–2014"
+        }
+      ]
     },
     {
       "id": "padre",
@@ -400,7 +494,7 @@
       "deathYear": "Presente",
       "birthPlace": "San Antonio de Areco",
       "occupation": "Ingeniero Civil",
-      "x": 510,
+      "x": 730,
       "y": 380,
       "spouseId": "madre",
       "parentIds": [
@@ -448,7 +542,15 @@
         }
       ],
       "photos": [],
-      "videos": []
+      "videos": [],
+      "partnerships": [
+        {
+          "partnerId": "madre",
+          "order": 1,
+          "status": "current",
+          "period": "1991–Presente"
+        }
+      ]
     },
     {
       "id": "madre",
@@ -461,7 +563,7 @@
       "deathYear": "Presente",
       "birthPlace": "La Plata",
       "occupation": "Arquitecta patrimonial",
-      "x": 860,
+      "x": 1025,
       "y": 380,
       "spouseId": "padre",
       "parentIds": [
@@ -493,6 +595,68 @@
       ],
       "letters": [],
       "photos": [],
+      "videos": [],
+      "partnerships": [
+        {
+          "partnerId": "padre",
+          "order": 1,
+          "status": "current",
+          "period": "1991–Presente"
+        }
+      ]
+    },
+    {
+      "id": "ex-tio-mat",
+      "name": "Valeria Ríos",
+      "nickname": "Vale",
+      "role": "Ex-pareja de Jorge (1ª ♡)",
+      "generation": 2,
+      "branch": "materna",
+      "birthYear": "1970",
+      "deathYear": "Presente",
+      "birthPlace": "Mar del Plata, Buenos Aires",
+      "residence": "Rosario, Santa Fe",
+      "occupation": "Bióloga marina y docente universitaria",
+      "avatarColor": "#4F777A",
+      "x": 1360,
+      "y": 380,
+      "spouseId": null,
+      "partnerships": [
+        {
+          "partnerId": "tio-mat",
+          "order": 1,
+          "status": "previous",
+          "period": "1995–2006"
+        }
+      ],
+      "parentIds": [],
+      "voiceProfile": {
+        "preset": "es-419+f3",
+        "pitch": 136,
+        "rate": 146,
+        "timbreDescription": "Voz clara, didáctica y entusiasta"
+      },
+      "bio": "Bióloga marina y madre de Sofía Conti. Estuvo en primeras nupcias con Jorge Conti entre 1995 y 2006. Mantiene un vínculo cercano y afectuoso con toda la rama materna en cada celebración familiar.",
+      "milestones": [
+        {
+          "year": "1970",
+          "event": "Nace en Mar del Plata."
+        },
+        {
+          "year": "1995",
+          "event": "Inicia su primera unión con Jorge Conti."
+        },
+        {
+          "year": "1998",
+          "event": "Nace su hija Sofía Conti."
+        },
+        {
+          "year": "2006",
+          "event": "Separación de mutuo acuerdo con Jorge."
+        }
+      ],
+      "letters": [],
+      "photos": [],
       "videos": []
     },
     {
@@ -506,9 +670,9 @@
       "deathYear": "Presente",
       "birthPlace": "La Plata",
       "occupation": "Fotógrafo documental",
-      "x": 1240,
+      "x": 1655,
       "y": 380,
-      "spouseId": null,
+      "spouseId": "pareja-tio-mat-2",
       "parentIds": [
         "abuelo-mat",
         "abuela-mat"
@@ -538,6 +702,70 @@
       ],
       "letters": [],
       "photos": [],
+      "videos": [],
+      "partnerships": [
+        {
+          "partnerId": "ex-tio-mat",
+          "order": 1,
+          "status": "previous",
+          "period": "1995–2006"
+        },
+        {
+          "partnerId": "pareja-tio-mat-2",
+          "order": 2,
+          "status": "current",
+          "period": "2011–Presente"
+        }
+      ]
+    },
+    {
+      "id": "pareja-tio-mat-2",
+      "name": "Carolina Mendoza",
+      "nickname": "Caro",
+      "role": "Pareja de Jorge (2ª ♥)",
+      "generation": 2,
+      "branch": "materna",
+      "birthYear": "1972",
+      "deathYear": "Presente",
+      "birthPlace": "Mendoza Capital",
+      "residence": "Rosario, Santa Fe",
+      "occupation": "Curadora de fotografía y editora",
+      "avatarColor": "#8E5B72",
+      "x": 1950,
+      "y": 380,
+      "spouseId": "tio-mat",
+      "partnerships": [
+        {
+          "partnerId": "tio-mat",
+          "order": 2,
+          "status": "current",
+          "period": "2011–Presente"
+        }
+      ],
+      "parentIds": [],
+      "voiceProfile": {
+        "preset": "es-419+f4",
+        "pitch": 132,
+        "rate": 142,
+        "timbreDescription": "Voz suave con cadencia cuyana"
+      },
+      "bio": "Curadora fotográfica y compañera actual de Jorge Conti en segundas nupcias desde 2011. Colaboró activamente en la digitalización y catalogación de los álbumes antiguos de la familia Conti.",
+      "milestones": [
+        {
+          "year": "1972",
+          "event": "Nace en la ciudad de Mendoza."
+        },
+        {
+          "year": "2011",
+          "event": "Se une en segundas nupcias con Jorge Conti en Rosario."
+        },
+        {
+          "year": "2019",
+          "event": "Organiza la muestra del archivo fotográfico familiar."
+        }
+      ],
+      "letters": [],
+      "photos": [],
       "videos": []
     },
     {
@@ -551,11 +779,12 @@
       "deathYear": "Presente",
       "birthPlace": "San Antonio de Areco",
       "occupation": "Luthier y músico acústico",
-      "x": 120,
+      "x": 248,
       "y": 650,
       "spouseId": null,
       "parentIds": [
-        "tia-pat"
+        "tia-pat",
+        "pareja-tia-pat-1"
       ],
       "avatarColor": "#9C6B43",
       "avatarInitials": "LÁ",
@@ -578,7 +807,8 @@
       ],
       "letters": [],
       "photos": [],
-      "videos": []
+      "videos": [],
+      "partnerships": []
     },
     {
       "id": "hermano-1",
@@ -591,7 +821,7 @@
       "deathYear": "Presente",
       "birthPlace": "La Plata",
       "occupation": "Impulsor del Archivo Digital Familiar",
-      "x": 520,
+      "x": 730,
       "y": 650,
       "spouseId": null,
       "parentIds": [
@@ -623,7 +853,8 @@
       ],
       "letters": [],
       "photos": [],
-      "videos": []
+      "videos": [],
+      "partnerships": []
     },
     {
       "id": "hermano-2",
@@ -636,7 +867,7 @@
       "deathYear": "Presente",
       "birthPlace": "La Plata",
       "occupation": "Diseñadora visual y violonchelista",
-      "x": 850,
+      "x": 1025,
       "y": 650,
       "spouseId": null,
       "parentIds": [
@@ -664,7 +895,8 @@
       ],
       "letters": [],
       "photos": [],
-      "videos": []
+      "videos": [],
+      "partnerships": []
     },
     {
       "id": "primo-2",
@@ -677,11 +909,12 @@
       "deathYear": "Presente",
       "birthPlace": "La Plata",
       "occupation": "Bióloga y paisajista",
-      "x": 1240,
+      "x": 1508,
       "y": 650,
       "spouseId": null,
       "parentIds": [
-        "tio-mat"
+        "tio-mat",
+        "ex-tio-mat"
       ],
       "avatarColor": "#4D7B58",
       "avatarInitials": "SC",
@@ -704,7 +937,8 @@
       ],
       "letters": [],
       "photos": [],
-      "videos": []
+      "videos": [],
+      "partnerships": []
     }
   ]
 }
