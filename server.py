@@ -6,9 +6,11 @@ Puerto por defecto: 8765
 """
 
 import base64
+import io
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import threading
@@ -17,6 +19,12 @@ from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+try:
+    from PIL import Image, ImageEnhance, ImageOps
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
@@ -63,6 +71,33 @@ def default_history():
     ]
 
 
+def default_access_codes():
+    return [
+        {
+            "code": "FAMILIA-2026",
+            "label": "Acceso Familiar General",
+            "role": "Lector",
+            "createdAt": "17/11/2026 10:00",
+        },
+        {
+            "code": "EDITOR-2026",
+            "label": "Acceso Co-editor Familiar",
+            "role": "Co-editor",
+            "createdAt": "17/11/2026 10:00",
+        },
+    ]
+
+
+def ensure_data_defaults(data):
+    data.setdefault("pendingApprovals", [])
+    data.setdefault("historyLog", default_history())
+    data.setdefault("readerComments", [])
+    meta = data.setdefault("metadata", {})
+    if not isinstance(meta.get("accessCodes"), list) or len(meta["accessCodes"]) == 0:
+        meta["accessCodes"] = default_access_codes()
+    return data
+
+
 def load_family_data():
     """Carga el archivo de estado si existe, o el archivo base original (protegido por lock)."""
     with DATA_LOCK:
@@ -76,15 +111,11 @@ def load_family_data():
                 meta = base_data.get("metadata", {})
                 meta.update(state_data.get("metadata", {}))
                 state_data["metadata"] = meta
-                state_data.setdefault("pendingApprovals", [])
-                state_data.setdefault("historyLog", default_history())
-                return state_data
+                return ensure_data_defaults(state_data)
             except Exception as exc:
                 print(f"[WARN] Estado corrupto en {STATE_FILE}, usando base: {exc}")
 
-        base_data.setdefault("pendingApprovals", [])
-        base_data.setdefault("historyLog", default_history())
-        return base_data
+        return ensure_data_defaults(base_data)
 
 
 def save_family_data(data):
@@ -110,6 +141,11 @@ def get_user_role(data, user_email):
         return "Propietario"
     if clean in co_editors:
         return "Co-editor"
+    if clean.startswith("codigo:"):
+        code_val = clean.split("codigo:", 1)[1].strip().upper()
+        for c in meta.get("accessCodes", []):
+            if (c.get("code") or "").strip().upper() == code_val:
+                return c.get("role") or "Lector"
     return "Lector"
 
 
@@ -398,11 +434,11 @@ def save_data_url_file(data_url, subfolder, prefix="archivo"):
     if not data_url or not data_url.startswith("data:"):
         return None, 0
 
-    match = re.match(r"^data:([^;]+);base64,(.+)$", data_url, re.DOTALL)
+    match = re.match(r"^data:([^;,]+)(?:;[^,]+)*;base64,(.+)$", data_url, re.DOTALL)
     if not match:
         return None, 0
 
-    mime_type = match.group(1)
+    mime_type = match.group(1).strip().lower()
     b64_data = match.group(2)
     raw_bytes = base64.b64decode(b64_data)
 
@@ -414,6 +450,16 @@ def save_data_url_file(data_url, subfolder, prefix="archivo"):
         "video/mp4": ".mp4",
         "video/webm": ".webm",
         "video/quicktime": ".mov",
+        "audio/mpeg": ".mp3",
+        "audio/mp3": ".mp3",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/wave": ".wav",
+        "audio/ogg": ".ogg",
+        "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a",
+        "audio/aac": ".aac",
+        "audio/webm": ".webm",
     }
     ext = ext_map.get(mime_type, ".bin")
     target_dir = UPLOADS_DIR / subfolder
@@ -426,6 +472,79 @@ def save_data_url_file(data_url, subfolder, prefix="archivo"):
 
     size_kb = max(1, round(len(raw_bytes) / 1024))
     return f"./uploads/{subfolder}/{filename}", size_kb
+
+
+def preprocess_image_for_ocr(data_url):
+    """
+    Preprocesa la fotografía o escaneo de una carta (realce de contraste en papel antiguo)
+    para facilitar tanto el OCR (Tesseract.js / Tesseract / Drive OCR) como la lectura visual.
+    """
+    if not data_url or not data_url.startswith("data:"):
+        return {"ok": False, "error": "Imagen inválida para OCR"}
+
+    match = re.match(r"^data:([^;,]+)(?:;[^,]+)*;base64,(.+)$", data_url, re.DOTALL)
+    if not match:
+        return {"ok": False, "error": "Formato base64 inválido"}
+
+    raw_bytes = base64.b64decode(match.group(2))
+    enhanced_data_url = data_url
+    width, height = 0, 0
+    server_text = ""
+    server_ocr_used = False
+
+    if HAS_PIL:
+        try:
+            img = Image.open(io.BytesIO(raw_bytes))
+            img = ImageOps.exif_transpose(img)
+            width, height = img.size
+
+            if width < 1000:
+                ratio = 1200 / max(1, width)
+                img = img.resize((int(width * ratio), int(height * ratio)), Image.Resampling.LANCZOS)
+            elif width > 2200:
+                ratio = 2000 / width
+                img = img.resize((int(width * ratio), int(height * ratio)), Image.Resampling.LANCZOS)
+
+            gray = ImageOps.grayscale(img)
+            gray = ImageOps.autocontrast(gray, cutoff=2)
+            gray = ImageEnhance.Contrast(gray).enhance(1.55)
+            gray = ImageEnhance.Sharpness(gray).enhance(1.7)
+
+            buf = io.BytesIO()
+            gray.save(buf, format="JPEG", quality=88)
+            enhanced_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            enhanced_data_url = f"data:image/jpeg;base64,{enhanced_b64}"
+
+            tesseract_bin = shutil.which("tesseract")
+            if tesseract_bin:
+                tmp_path = BASE_DIR / "data" / f"tmp-ocr-{int(time.time() * 1000)}.jpg"
+                tmp_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    gray.save(tmp_path, format="JPEG", quality=92)
+                    proc = subprocess.run(
+                        [tesseract_bin, str(tmp_path), "stdout", "-l", "spa+eng"],
+                        capture_output=True,
+                        text=True,
+                        timeout=20,
+                    )
+                    if proc.returncode == 0 and proc.stdout.strip():
+                        server_text = proc.stdout.strip()
+                        server_ocr_used = True
+                finally:
+                    if tmp_path.exists():
+                        tmp_path.unlink()
+        except Exception as e:
+            return {"ok": False, "error": f"Error procesando imagen: {e}"}
+
+    return {
+        "ok": True,
+        "enhancedDataUrl": enhanced_data_url,
+        "width": width,
+        "height": height,
+        "serverOcrUsed": server_ocr_used,
+        "serverText": server_text,
+        "pilEnabled": HAS_PIL,
+    }
 
 
 class FamilyTreeHandler(SimpleHTTPRequestHandler):
@@ -464,6 +583,10 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/family":
             data = load_family_data()
             return self._send_json(data)
+
+        if parsed.path == "/api/family/comments":
+            data = load_family_data()
+            return self._send_json({"ok": True, "comments": data.get("readerComments", [])})
 
         if parsed.path == "/fallback-data.js":
             data = load_family_data()
@@ -622,7 +745,15 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
             save_family_data(data)
             return self._send_json({"ok": True, "data": data})
 
-        # 4. Subida unificada de Material al Drive del Propietario / YouTube
+        # 4. Preprocesamiento + OCR local para Cartas Manuscritas o Impresas
+        if parsed.path == "/api/ocr":
+            body = self._read_body_json()
+            data_url = body.get("dataUrl")
+            result = preprocess_image_for_ocr(data_url)
+            status = 200 if result.get("ok") else 400
+            return self._send_json(result, status)
+
+        # 5. Subida unificada de Material al Drive del Propietario / YouTube / Audios / Cartas + OCR
         if parsed.path == "/api/family/upload":
             body = self._read_body_json()
             user_email = body.get("userEmail") or "martin.alvarez@gmail.com"
@@ -636,8 +767,18 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
             year_or_date = (body.get("date") or "Archivo").strip()
             description = (body.get("description") or "").strip()
             data_url = body.get("dataUrl")
+            audio_data_url = body.get("audioDataUrl")
             youtube_upload = bool(body.get("youtubeUpload", True))
             paper_type = body.get("paperType") or "aged-cream"
+
+            ocr_enabled = bool(body.get("ocrEnabled", False))
+            ocr_status = body.get("ocrStatus") or ("manual" if description else "image_only")
+            ocr_raw_text = (body.get("ocrRawText") or "").strip()
+            enhanced_scan_url = None
+            if body.get("enhancedDataUrl"):
+                enhanced_scan_url, _ = save_data_url_file(
+                    body.get("enhancedDataUrl"), "drive_cartas", f"ocr-{member_id}"
+                )
 
             target_member = next(
                 (m for m in data.get("members", []) if m.get("id") == member_id), None
@@ -672,9 +813,13 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
 
             elif media_type == "letter":
                 local_url, size_kb = save_data_url_file(data_url, "drive_cartas", f"carta-{member_id}")
+                custom_audio_url, audio_kb = save_data_url_file(
+                    audio_data_url, "drive_audios", f"carta-audio-{member_id}"
+                )
                 paragraphs = [p.strip() for p in description.split("\n") if p.strip()]
-                if not paragraphs:
-                    paragraphs = [title]
+                if not paragraphs and ocr_status != "image_only":
+                    paragraphs = []
+
                 letter_obj = {
                     "id": f"carta-{int(time.time() * 1000)}",
                     "title": title,
@@ -683,19 +828,78 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
                     "paperType": paper_type,
                     "inkColor": "#251e19",
                     "scanImageUrl": local_url,
+                    "enhancedScanUrl": enhanced_scan_url,
+                    "customAudioUrl": custom_audio_url,
+                    "customAudioSizeKB": audio_kb or 0,
+                    "ocrEnabled": ocr_enabled,
+                    "ocrStatus": ocr_status,
+                    "ocrRawText": ocr_raw_text,
                     "drivePath": f"{drive_root}/Cartas/{target_member['name']}/{title}.jpg",
                     "driveSizeKB": size_kb or 18,
                     "paragraphs": paragraphs,
                     "uploadedBy": user_email,
                 }
                 target_member.setdefault("letters", []).append(letter_obj)
+                ocr_tag = (
+                    " · OCR Aprobado"
+                    if ocr_status == "approved"
+                    else " · OCR Pendiente de revisión"
+                    if ocr_status == "pending_review"
+                    else ""
+                )
+                audio_tag = " + Audio original" if custom_audio_url else ""
                 add_history_entry(
                     data,
                     user_email,
                     "media_uploaded",
-                    f"Subió carta manuscrita '{title}' ({year_or_date}) y activó lectura de voz",
+                    f"Subió carta '{title}' ({year_or_date}){ocr_tag}{audio_tag}",
                     f"Familiar: {target_member['name']} · {len(paragraphs)} párrafo(s)",
                 )
+
+            elif media_type == "audio":
+                audio_url, audio_kb = save_data_url_file(
+                    data_url or audio_data_url, "drive_audios", f"audio-{member_id}"
+                )
+                audio_target = body.get("audioTarget") or "bio"
+                if not audio_url:
+                    return self._send_json(
+                        {"ok": False, "error": "No se recibió archivo o grabación de audio válida."},
+                        400,
+                    )
+
+                if audio_target.startswith("letter:"):
+                    letter_id = audio_target.split("letter:", 1)[1]
+                    target_letter = next(
+                        (l for l in target_member.get("letters", []) if l.get("id") == letter_id),
+                        None,
+                    )
+                    if target_letter:
+                        target_letter["customAudioUrl"] = audio_url
+                        target_letter["customAudioTitle"] = title
+                        target_letter["customAudioSizeKB"] = audio_kb
+                        target_letter["customAudioDate"] = year_or_date
+                        add_history_entry(
+                            data,
+                            user_email,
+                            "media_uploaded",
+                            f"Subió audio '{title}' para la carta '{target_letter.get('title')}'",
+                            f"Familiar: {target_member['name']} · {audio_kb} KB",
+                        )
+                    else:
+                        return self._send_json({"ok": False, "error": "Carta destino no encontrada"}, 404)
+                else:
+                    target_member["bioAudioUrl"] = audio_url
+                    target_member["bioAudioTitle"] = title
+                    target_member["bioAudioSizeKB"] = audio_kb
+                    target_member["bioAudioYear"] = year_or_date
+                    target_member["bioAudioNote"] = description
+                    add_history_entry(
+                        data,
+                        user_email,
+                        "media_uploaded",
+                        f"Subió audio de biografía '{title}' ({year_or_date})",
+                        f"Familiar: {target_member['name']} · {audio_kb} KB",
+                    )
 
             elif media_type == "video":
                 subfolder = "youtube_precarga" if youtube_upload else "drive_videos"
@@ -734,7 +938,51 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
                 {"ok": True, "member": target_member, "historyLog": data.get("historyLog", [])}
             )
 
-        # 5. Crear o actualizar un familiar
+        # 5b. Corregir y/o Aprobar texto OCR de una carta existente
+        if parsed.path == "/api/family/update-letter-ocr":
+            body = self._read_body_json()
+            user_email = body.get("userEmail") or "martin.alvarez@gmail.com"
+            data = load_family_data()
+            if not can_user_edit(data, user_email):
+                return self._send_json({"ok": False, "error": "Sin permiso de edición"}, 403)
+
+            member_id = body.get("memberId")
+            letter_id = body.get("letterId")
+            text = (body.get("text") or "").strip()
+            ocr_status = body.get("ocrStatus") or "approved"
+
+            target_member = next(
+                (m for m in data.get("members", []) if m.get("id") == member_id), None
+            )
+            if not target_member:
+                return self._send_json({"ok": False, "error": "Familiar no encontrado"}, 404)
+
+            target_letter = next(
+                (l for l in target_member.get("letters", []) if l.get("id") == letter_id), None
+            )
+            if not target_letter:
+                return self._send_json({"ok": False, "error": "Carta no encontrada"}, 404)
+
+            paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+            target_letter["paragraphs"] = paragraphs
+            target_letter["ocrStatus"] = ocr_status
+            target_letter["ocrReviewedBy"] = user_email
+            target_letter["ocrReviewedAt"] = now_str()
+
+            estado_lbl = "✅ Aprobó" if ocr_status == "approved" else "📝 Editó borrador OCR de"
+            add_history_entry(
+                data,
+                user_email,
+                "media_uploaded",
+                f"{estado_lbl} transcripción OCR de la carta '{target_letter.get('title')}'",
+                f"Familiar: {target_member['name']} · {len(paragraphs)} párrafo(s)",
+            )
+            save_family_data(data)
+            return self._send_json(
+                {"ok": True, "member": target_member, "historyLog": data.get("historyLog", [])}
+            )
+
+        # 6. Crear o actualizar un familiar (con foto circular de retrato si se envía avatarDataUrl)
         if parsed.path == "/api/family/member":
             body = self._read_body_json()
             user_email = body.get("userEmail") or "martin.alvarez@gmail.com"
@@ -744,8 +992,16 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
 
             updated_member = body.get("member")
             children_ids = body.get("childrenIds", [])
+            avatar_data_url = body.get("avatarDataUrl")
             if not updated_member or not updated_member.get("id"):
                 return self._send_json({"ok": False, "error": "Familiar inválido"}, 400)
+
+            if avatar_data_url:
+                avatar_url, _ = save_data_url_file(
+                    avatar_data_url, "drive_retratos", f"retrato-{updated_member['id']}"
+                )
+                if avatar_url:
+                    updated_member["avatarUrl"] = avatar_url
 
             members = data.get("members", [])
             replaced = sync_member_into_tree(members, updated_member, children_ids)
@@ -884,6 +1140,141 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
 
             save_family_data(data)
             return self._send_json({"ok": True, "decision": decision, "data": data})
+
+        # 8. Comentarios y sugerencias de lectores para editores/co-editores
+        if parsed.path == "/api/family/comments":
+            body = self._read_body_json()
+            author_name = (body.get("authorName") or "Familiar Lector").strip()
+            author_email = (body.get("authorEmail") or "").strip()
+            member_id = (body.get("memberId") or "").strip()
+            category = (body.get("category") or "Sugerencia").strip()
+            message = (body.get("message") or "").strip()
+
+            if not message:
+                return self._send_json({"ok": False, "error": "El mensaje no puede estar vacío."}, 400)
+
+            data = load_family_data()
+            member_obj = next((m for m in data.get("members", []) if m.get("id") == member_id), None)
+            comment_obj = {
+                "id": f"cmt-{int(time.time() * 1000)}",
+                "authorName": author_name,
+                "authorEmail": author_email,
+                "memberId": member_id,
+                "memberName": member_obj["name"] if member_obj else "General del árbol",
+                "category": category,
+                "message": message,
+                "status": "pending",
+                "createdAt": now_str(),
+            }
+            data.setdefault("readerComments", []).insert(0, comment_obj)
+            add_history_entry(
+                data,
+                author_email or author_name,
+                "comment_added",
+                f"Dejó sugerencia ({category}) sobre {comment_obj['memberName']}",
+                message[:120],
+            )
+            save_family_data(data)
+            return self._send_json(
+                {"ok": True, "comment": comment_obj, "readerComments": data.get("readerComments", [])}
+            )
+
+        # 9. Resolver o descartar comentarios de lectores (Solo Propietario o Co-editor)
+        if parsed.path == "/api/family/comments/resolve":
+            body = self._read_body_json()
+            user_email = (body.get("userEmail") or "").strip().lower()
+            comment_id = body.get("commentId")
+            action = body.get("action") or "resolved"  # 'resolved' | 'dismiss'
+
+            data = load_family_data()
+            if not can_user_edit(data, user_email):
+                return self._send_json(
+                    {"ok": False, "error": "Solo editores y co-editores pueden gestionar sugerencias."},
+                    403,
+                )
+
+            comments = data.get("readerComments", [])
+            if action == "dismiss":
+                data["readerComments"] = [c for c in comments if c.get("id") != comment_id]
+            else:
+                for c in comments:
+                    if c.get("id") == comment_id:
+                        c["status"] = "resolved"
+                        c["resolvedBy"] = user_email
+                        c["resolvedAt"] = now_str()
+            save_family_data(data)
+            return self._send_json({"ok": True, "readerComments": data.get("readerComments", [])})
+
+        # 10. Verificación alternativa con Código de Invitación / PIN (sin cuenta de Google)
+        if parsed.path == "/api/family/auth-code":
+            body = self._read_body_json()
+            code = (body.get("code") or "").strip().upper()
+            name = (body.get("name") or "").strip() or "Familiar Invitado"
+            if not code:
+                return self._send_json({"ok": False, "error": "Ingresá un código familiar o PIN."}, 400)
+
+            data = load_family_data()
+            codes = data.get("metadata", {}).get("accessCodes", [])
+            found = next((c for c in codes if (c.get("code") or "").strip().upper() == code), None)
+            if not found:
+                return self._send_json(
+                    {"ok": False, "error": "Código o PIN inválido. Pedí un código al propietario o co-editor."},
+                    401,
+                )
+
+            return self._send_json(
+                {
+                    "ok": True,
+                    "sessionId": f"codigo:{found['code']}",
+                    "displayName": name,
+                    "role": found.get("role") or "Lector",
+                    "label": found.get("label") or "Código Familiar",
+                }
+            )
+
+        # 11. Gestión de Códigos de Invitación para parientes sin Google (Solo Propietario / Co-editor)
+        if parsed.path == "/api/family/access-codes":
+            body = self._read_body_json()
+            user_email = (body.get("userEmail") or "").strip().lower()
+            action = body.get("action") or "create"  # 'create' | 'delete'
+            data = load_family_data()
+            role = get_user_role(data, user_email)
+            if role not in ("Propietario", "Co-editor"):
+                return self._send_json({"ok": False, "error": "Sin permisos administrativos."}, 403)
+
+            meta = data.setdefault("metadata", {})
+            codes = meta.setdefault("accessCodes", [])
+
+            if action == "delete":
+                target_code = (body.get("code") or "").strip().upper()
+                meta["accessCodes"] = [c for c in codes if (c.get("code") or "").strip().upper() != target_code]
+            else:
+                new_code = (body.get("code") or "").strip().upper()
+                label = (body.get("label") or "Familiar sin Google").strip()
+                target_role = body.get("role") or "Lector"
+                if target_role == "Co-editor" and role != "Propietario":
+                    target_role = "Lector"
+                if not new_code:
+                    return self._send_json({"ok": False, "error": "Código vacío."}, 400)
+                if not any((c.get("code") or "").strip().upper() == new_code for c in codes):
+                    codes.append(
+                        {
+                            "code": new_code,
+                            "label": label,
+                            "role": target_role,
+                            "createdBy": user_email,
+                            "createdAt": now_str(),
+                        }
+                    )
+
+            add_history_entry(
+                data,
+                user_email,
+                "permissions_changed",
+                f"{'Eliminó' if action == 'delete' else 'Creó'} código de acceso familiar ({body.get('code', '')})",
+            )
+            save_family_data(data)
+            return self._send_json({"ok": True, "accessCodes": meta["accessCodes"], "historyLog": data.get("historyLog", [])})
 
         return self._send_json({"ok": False, "error": "Ruta no encontrada"}, 404)
 

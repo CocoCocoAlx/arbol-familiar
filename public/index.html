@@ -2,31 +2,63 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#7C4D33" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>Árbol Genealógico · Familia Álvarez – Conti</title>
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./styles.css?v=9" />
+  <!-- Tailwind CSS para adaptación responsiva multiplataforma Android e iOS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if (window.tailwind) {
+      window.tailwind.config = {
+        corePlugins: { preflight: false },
+        theme: {
+          extend: {
+            colors: {
+              parchment: "#F4EFE6",
+              terracotta: "#8C4F30",
+              botanical: "#3C6E57",
+              atlantic: "#3B6978"
+            }
+          }
+        }
+      };
+    }
+  </script>
+  <link rel="stylesheet" href="./styles.css?v=10" />
 </head>
 <body>
   <!-- ========================================================================
-       PANTALLA DE INICIO DE SESIÓN RESPONSIVA (GOOGLE IDENTITY + ROLES)
+       PANTALLA DE INICIO DE SESIÓN UNIFICADA (GOOGLE O CÓDIGO / PIN FAMILIAR)
        ======================================================================== -->
   <div id="auth-modal" class="auth-overlay">
     <div class="auth-card">
       <div class="auth-header-compact">
         <div class="auth-crest">🌳</div>
         <div>
-          <span class="auth-pill">Google Identity · Privado</span>
+          <span class="auth-pill">Acceso Familiar Privado</span>
           <h1>Familia Álvarez – Conti</h1>
         </div>
       </div>
 
       <p class="auth-desc">
-        Lienzo genealógico privado. El <strong>Propietario</strong> y los <strong>Co-editores</strong> pueden editar y subir archivos a Drive; el resto ingresa en <strong>Modo Lectura</strong>.
+        Ingresá con tu <strong>cuenta de Google</strong> o con un <strong>Código Familiar / PIN</strong> (sin necesidad de tener Gmail).
       </p>
 
-      <div class="auth-options">
+      <!-- Pestañas de método de verificación (Punto 8) -->
+      <div class="flex gap-1.5 mb-3 bg-stone-100 p-1 rounded-lg border border-stone-200">
+        <button type="button" id="btn-auth-tab-google" class="flex-1 py-1.5 px-2 rounded-md text-xs font-bold bg-white shadow-sm text-stone-800 border border-stone-200">
+          🌐 Cuenta Google
+        </button>
+        <button type="button" id="btn-auth-tab-code" class="flex-1 py-1.5 px-2 rounded-md text-xs font-bold text-stone-600">
+          🔑 Código / PIN (Sin Google)
+        </button>
+      </div>
+
+      <div id="auth-panel-google" class="auth-options">
         <label class="auth-label" for="auth-email-select">Cuenta de Google:</label>
         <select id="auth-email-select" class="auth-select">
           <option value="martin.alvarez@gmail.com">👑 martin.alvarez@gmail.com (Propietario)</option>
@@ -51,10 +83,25 @@
         </div>
       </div>
 
+      <div id="auth-panel-code" class="auth-options hidden space-y-2.5">
+        <div>
+          <label class="auth-label" for="auth-code-name">Tu nombre y apellido:</label>
+          <input type="text" id="auth-code-name" class="auth-select mb-0" placeholder="Ej: Tía Marta Álvarez" />
+        </div>
+        <div>
+          <label class="auth-label" for="auth-code-pin">Código de Invitación o PIN familiar:</label>
+          <input type="text" id="auth-code-pin" class="auth-select mb-0 uppercase" placeholder="Ej: FAMILIA-2026" />
+        </div>
+        <button id="btn-code-login" type="button" class="btn-primary w-full py-2.5 text-sm">
+          🔓 Entrar con Código Familiar
+        </button>
+        <div id="auth-code-error" class="auth-error hidden"></div>
+      </div>
+
       <div class="auth-footer-badges">
         <span>👑 Co-editores</span>
-        <span>☁️ Google Drive + YouTube</span>
-        <span>📱 Táctil</span>
+        <span>🔑 PIN sin Google</span>
+        <span>📱 Android & iOS</span>
       </div>
     </div>
   </div>
@@ -93,13 +140,16 @@
     <!-- Acciones rápidas por íconos a la derecha -->
     <div class="topbar-right">
       <div class="view-toggle" role="group" aria-label="Cambiar vista">
+        <button id="btn-view-focus" class="view-btn" title="Modo Móvil: Familiar Foco">🎯</button>
         <button id="btn-view-canvas" class="view-btn active" title="Vista Lienzo Interactivo">🗺️</button>
         <button id="btn-view-list" class="view-btn" title="Vista Lista por Generación">📱</button>
       </div>
 
+      <button id="btn-quick-comment" class="icon-btn" title="Dejar sugerencia o corrección">💬</button>
+
       <div id="editor-quick-icons" class="editor-quick-icons">
         <button id="btn-quick-add-member" class="icon-btn primary-icon-btn" title="Agregar nuevo familiar">👤+</button>
-        <button id="btn-quick-upload" class="icon-btn secondary-icon-btn" title="Subir foto, carta o video a Drive">📤</button>
+        <button id="btn-quick-upload" class="icon-btn secondary-icon-btn" title="Subir foto, carta, audio o video">📤</button>
       </div>
     </div>
   </header>
@@ -121,16 +171,22 @@
     </div>
 
     <div class="sidebar-body">
-      <!-- Tarjeta de sesión activa y cambio rápido de rol -->
+      <!-- Tarjeta de sesión activa y acceso discreto (Punto 7 & 8) -->
       <div class="sidebar-section user-session-box">
-        <div class="sidebar-section-label">Sesión de Google Activa</div>
-        <div class="active-user-row" id="user-chip" title="Toca para abrir pantalla de acceso">
+        <div class="sidebar-section-label">Sesión Activa</div>
+        <div class="active-user-row" id="user-chip" title="Toca para cambiar de cuenta o ingresar con PIN">
           <span class="user-dot"></span>
           <span id="user-role-tag" class="user-role-tag">👑 Propietario</span>
           <span id="user-email-label" class="user-email-trunc">martin.alvarez@gmail.com</span>
         </div>
-        <label class="sidebar-QuickSwitch-label" for="sidebar-role-switcher">Cambiar cuenta/rol de prueba:</label>
-        <select id="sidebar-role-switcher" class="auth-select compact-select"></select>
+        <div id="sidebar-quick-switch-wrap">
+          <label class="sidebar-QuickSwitch-label" for="sidebar-role-switcher">Cambiar cuenta/rol de prueba:</label>
+          <select id="sidebar-role-switcher" class="auth-select compact-select mb-2"></select>
+        </div>
+        <button id="btn-open-auth-modal" class="sidebar-link-btn mt-1">
+          <span>🔑 Cambiar sesión / Ingresar como editor</span>
+          <span class="sa-arrow">›</span>
+        </button>
       </div>
 
       <!-- Filtros de Ramas (100% accesibles en móvil) -->
@@ -175,10 +231,25 @@
         </div>
       </div>
 
-      <!-- Administración, Validaciones e Historial -->
+      <!-- Participación de Familiares (Lectores y Editores - Punto 6) -->
       <div class="sidebar-section">
+        <div class="sidebar-section-label">💬 Aportes de Familiares</div>
+        <div class="sidebar-menu-links">
+          <button id="btn-open-submit-comment" class="sidebar-link-btn">
+            <span>💬 Dejar sugerencia o corrección</span>
+            <span class="sa-arrow">›</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Administración, Validaciones e Historial (BLOQUEADO PARA LECTORES - Punto 7) -->
+      <div id="admin-security-section" class="sidebar-section">
         <div class="sidebar-section-label">⚙️ Administración y Seguridad</div>
         <div class="sidebar-menu-links">
+          <button id="btn-open-comments-inbox" class="sidebar-link-btn">
+            <span>📬 Sugerencias de Lectores</span>
+            <span id="comments-count-badge" class="tab-badge">0</span>
+          </button>
           <button id="btn-open-approvals" class="sidebar-link-btn">
             <span>⚖️ Validación de Decisiones</span>
             <span id="approvals-count-badge" class="tab-badge">0</span>
@@ -188,11 +259,7 @@
             <span class="sa-arrow">›</span>
           </button>
           <button id="btn-open-permissions" class="sidebar-link-btn">
-            <span>🔐 Gestión de Usuarios y Co-editores</span>
-            <span class="sa-arrow">›</span>
-          </button>
-          <button id="btn-open-auth-modal" class="sidebar-link-btn">
-            <span>🔄 Pantalla de Inicio de Sesión</span>
+            <span>🔐 Usuarios, Co-editores y Códigos</span>
             <span class="sa-arrow">›</span>
           </button>
         </div>
@@ -248,11 +315,18 @@
   </section>
 
   <!-- ========================================================================
-       PANEL DESLIZABLE DEL FAMILIAR (CABECERA COMPACTA + 80% ÁREA MULTIMEDIA)
+       MODO ADAPTATIVO MÓVIL: FAMILIAR FOCO (INDEPENDIENTE DEL LIENZO - PUNTO 3)
+       ======================================================================== -->
+  <section id="focus-viewport" class="focus-viewport hidden">
+    <div id="focus-container" class="max-w-md mx-auto space-y-3 pb-10"></div>
+  </section>
+
+  <!-- ========================================================================
+       PANEL DESLIZABLE DEL FAMILIAR (TAMAÑO FIJO SIN MAXIMIZAR - PUNTO 2)
        ======================================================================== -->
   <div id="member-drawer-backdrop" class="drawer-backdrop hidden"></div>
   <aside id="member-drawer" class="member-drawer hidden" aria-hidden="true">
-    <div class="drawer-drag-handle" id="drawer-drag-handle">
+    <div class="drawer-drag-handle">
       <span></span>
     </div>
 
@@ -270,7 +344,7 @@
         </div>
       </div>
       <div class="drawer-header-btns">
-        <button id="btn-expand-drawer" class="icon-btn" title="Expandir / Contraer panel">⤢</button>
+        <button id="btn-drawer-suggest-comment" class="icon-btn" title="Dejar sugerencia sobre este familiar">💬</button>
         <button id="btn-close-drawer" class="icon-btn" aria-label="Cerrar panel">✕</button>
       </div>
     </div>
@@ -310,6 +384,8 @@
     <div class="drawer-content">
       <!-- TAB 1: BIOGRAFÍA Y VÍNCULOS -->
       <div id="tab-panel-bio" class="tab-panel active">
+        <div id="bio-audio-container"></div>
+
         <div class="info-grid">
           <div class="info-item">
             <span class="info-label">📍 Origen</span>
@@ -402,6 +478,22 @@
           <input type="email" id="input-new-viewer" placeholder="Agregar lector@gmail.com" required />
           <button type="submit" class="icon-btn secondary-icon-btn" title="Añadir Lector">➕</button>
         </form>
+
+        <!-- Códigos de Invitación para parientes sin cuenta de Google (Punto 8) -->
+        <h4 class="perm-subtitle">🔑 Códigos / PIN para Parientes sin Cuenta de Google</h4>
+        <div id="access-codes-list" class="perm-list"></div>
+
+        <form id="form-add-access-code" class="grid grid-cols-1 sm:grid-cols-3 gap-1.5 mt-2">
+          <input type="text" id="input-new-code-label" class="border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs bg-white" placeholder="Etiqueta (ej: Tía Marta)" required />
+          <input type="text" id="input-new-code-pin" class="border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs bg-white uppercase" placeholder="Código (ej: MARTA-48)" required />
+          <div class="flex gap-1.5">
+            <select id="input-new-code-role" class="flex-1 border border-stone-300 rounded-lg px-2 py-1.5 text-xs bg-white">
+              <option value="Lector">👁️ Lector</option>
+              <option value="Co-editor">✍️ Co-editor</option>
+            </select>
+            <button type="submit" class="icon-btn primary-icon-btn" title="Crear código familiar">➕</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -430,7 +522,8 @@
             Tipo de archivo:
             <select id="upload-type-select">
               <option value="photo">📷 Fotografía (a Drive)</option>
-              <option value="letter">✉️ Carta en Papel (Drive + Voz)</option>
+              <option value="letter">✉️ Carta en Papel (OCR Opcional + Audio/Voz)</option>
+              <option value="audio">🎙️ Audio / Grabación (Biografía o Carta)</option>
               <option value="video">🎬 Video (Drive / YouTube)</option>
             </select>
           </label>
@@ -439,31 +532,127 @@
         <div class="form-row">
           <label>
             Título:
-            <input type="text" id="upload-title-input" placeholder="Ej: Casamiento / Carta 1965" required />
+            <input type="text" id="upload-title-input" placeholder="Ej: Casamiento / Carta 1965 / Relato oral" required />
           </label>
           <label>
-            Año o Fecha:
+            <span class="flex items-center justify-between">
+              <span>Año o Fecha:</span>
+              <button type="button" id="btn-toggle-upload-date-mode" class="text-[10.5px] font-bold text-terracotta underline">📅 Usar Calendario</button>
+            </span>
             <input type="text" id="upload-date-input" placeholder="Ej: 1974 o 12/05/1968" required />
+            <input type="date" id="upload-date-picker" class="hidden" />
           </label>
         </div>
 
         <div class="file-drop-zone" id="file-drop-zone">
-          <input type="file" id="upload-file-input" accept="image/*,video/*" />
-          <div id="file-drop-text">
-            📁 <strong>Elegir foto, escaneo o video de tu dispositivo</strong>
+          <input type="file" id="upload-file-input" accept="image/*,video/*,audio/*" />
+          <div id="file-drop-text" class="text-xs text-stone-600 mt-1">
+            📁 <strong>Elegir foto, escaneo, audio o video de tu dispositivo</strong>
           </div>
         </div>
 
-        <div id="upload-letter-options" class="hidden">
+        <!-- OPCIONES DE AUDIO (BIO O CARTA) -->
+        <div id="upload-audio-options" class="hidden space-y-2 mb-3">
           <label>
-            Estilo de papel:
-            <select id="upload-paper-select">
-              <option value="aged-cream">Papel antiguo crema</option>
-              <option value="lined-notebook">Hoja de cuaderno rayado</option>
-              <option value="airmail">Carta Vía Aérea</option>
-              <option value="watercolor-paper">Papel algodón con flor</option>
-            </select>
+            ¿Dónde asociar este audio?
+            <select id="upload-audio-target"></select>
           </label>
+
+          <div class="audio-recorder-box flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="text-xs font-semibold text-stone-700">
+                🎙️ O grabá voz en directo (Android / iOS / PC):
+              </div>
+              <div class="flex items-center gap-2">
+                <button type="button" id="btn-record-audio" class="btn-secondary text-xs py-1.5 px-3">
+                  🔴 Grabar Audio
+                </button>
+                <span id="audio-record-timer" class="text-xs font-mono font-bold text-stone-700 hidden">
+                  <span class="rec-dot"></span> 00:00
+                </span>
+              </div>
+            </div>
+            <audio id="audio-record-preview" controls playsinline class="w-full h-9 hidden"></audio>
+          </div>
+        </div>
+
+        <!-- OPCIONES DE CARTA: ESTILO DE PAPEL + AUDIO OPCIONAL + OCR OPCIONAL -->
+        <div id="upload-letter-options" class="hidden space-y-2 mb-3">
+          <div class="form-row">
+            <label>
+              Estilo de papel:
+              <select id="upload-paper-select">
+                <option value="aged-cream">Papel antiguo crema</option>
+                <option value="lined-notebook">Hoja de cuaderno rayado</option>
+                <option value="airmail">Carta Vía Aérea</option>
+                <option value="watercolor-paper">Papel algodón con flor</option>
+              </select>
+            </label>
+            <label>
+              🎙️ Audio leído opcional (.mp3/.wav/.m4a):
+              <input type="file" id="upload-letter-audio-input" accept="audio/*" />
+            </label>
+          </div>
+
+          <div class="ocr-studio-card">
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-xs font-bold text-stone-800">
+                  🔍 Aplicar OCR para extraer texto de la carta (Opcional)
+                </div>
+                <div class="text-[11px] text-stone-600 leading-tight mt-0.5">
+                  Activá esto si subís una foto o escaneo y querés revisar/corregir el texto extraído antes de guardar.
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="upload-ocr-toggle" />
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div id="upload-ocr-workspace" class="hidden mt-3 pt-2.5 border-t border-amber-200 space-y-2.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" id="btn-run-ocr" class="btn-primary text-xs py-1.5 px-3">
+                  ✨ Extraer texto (OCR)
+                </button>
+                <span id="ocr-status-badge" class="ocr-badge ocr-badge-manual">
+                  Listo para escanear
+                </span>
+              </div>
+
+              <div id="ocr-progress-bar-wrap" class="hidden w-full bg-stone-200 rounded-full h-2 overflow-hidden">
+                <div id="ocr-progress-bar" class="bg-terracotta h-2 transition-all duration-200" style="width: 10%"></div>
+              </div>
+
+              <div id="ocr-review-box" class="hidden space-y-2 bg-white border border-stone-300 rounded-lg p-2.5">
+                <div class="text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                  Apartado de Revisión y Corrección OCR
+                </div>
+
+                <div id="ocr-enhanced-preview-wrap" class="hidden">
+                  <div class="text-[11px] text-stone-600 mb-1">
+                    Vista con realce de contraste para comparar con tu texto:
+                  </div>
+                  <img id="ocr-enhanced-preview" alt="Vista previa OCR realzada" class="w-full max-h-44 object-contain rounded border border-stone-200 bg-stone-100" />
+                </div>
+
+                <div class="flex flex-wrap gap-1.5">
+                  <button type="button" id="btn-ocr-clean-lines" class="btn-ghost text-[11px] py-1 px-2">
+                    🧹 Limpiar saltos
+                  </button>
+                  <button type="button" id="btn-ocr-approve" class="btn-secondary text-[11px] py-1 px-2.5">
+                    ✅ Aprobar texto
+                  </button>
+                  <button type="button" id="btn-ocr-mark-pending" class="btn-ghost text-[11px] py-1 px-2">
+                    ⏳ Revisar después
+                  </button>
+                  <button type="button" id="btn-ocr-skip-text" class="btn-ghost text-[11px] py-1 px-2">
+                    🖼️ Omitir texto
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- INTERRUPTOR DE PRECARGA EN YOUTUBE -->
@@ -486,9 +675,8 @@
           Epígrafe o transcripción de la carta:
           <textarea
             id="upload-desc-input"
-            rows="3"
-            placeholder="Historia o texto de la carta (separa párrafos con Enter para la lectura por voz)..."
-            required
+            rows="4"
+            placeholder="Historia o texto de la carta (en cartas e OCR es opcional si solo querés subir el escaneo)..."
           ></textarea>
         </label>
 
@@ -594,7 +782,7 @@
 
         <div class="form-row">
           <label>
-            Color de Retrato:
+            Color de Retrato (si no tiene foto):
             <select id="member-color-select">
               <option value="#8C5A3C">Madera / Terracota</option>
               <option value="#3B6978">Azul Atlántico</option>
@@ -610,14 +798,46 @@
           </label>
         </div>
 
+        <!-- Foto de Retrato Circular con Encuadre Facial Centrado (Punto 5) -->
+        <div class="avatar-crop-box">
+          <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+            <span class="text-xs font-bold text-stone-700">📷 Foto de Retrato Circular (Opcional)</span>
+            <input type="file" id="member-avatar-file" accept="image/*" class="text-xs max-w-[220px]" />
+          </div>
+          <div id="avatar-crop-controls" class="hidden flex flex-col sm:flex-row items-center gap-3">
+            <canvas id="avatar-crop-canvas" width="140" height="140" title="Arrastrá para centrar el rostro"></canvas>
+            <div class="flex-1 w-full space-y-2">
+              <div class="text-[11px] text-stone-600">Arrastrá la imagen dentro del círculo para centrar el rostro y ajustá el zoom:</div>
+              <input type="range" id="avatar-crop-zoom" min="1" max="3" step="0.05" value="1" class="w-full" />
+              <div class="flex gap-1.5 flex-wrap">
+                <button type="button" id="btn-avatar-center" class="btn-secondary text-[11px] py-1 px-2">🎯 Centrar</button>
+                <button type="button" id="btn-avatar-clear" class="btn-ghost text-[11px] py-1 px-2">🗑️ Quitar foto</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Selectores de fecha con calendario interactivo (Punto 1) -->
         <div class="form-row">
           <label>
-            Nacimiento:
-            <input type="text" id="member-birth-input" placeholder="Ej: 1908" required />
+            <span class="flex items-center justify-between">
+              <span>Nacimiento:</span>
+              <button type="button" id="btn-toggle-birth-mode" class="text-[10.5px] font-bold text-terracotta underline">📅 Calendario</button>
+            </span>
+            <input type="text" id="member-birth-input" placeholder="Ej: 1908 o 14/05/1908" required />
+            <input type="date" id="member-birth-date" class="hidden" />
           </label>
           <label>
-            Fallecimiento (o Presente):
+            <span class="flex items-center justify-between">
+              <span>Fallecimiento:</span>
+              <button type="button" id="btn-toggle-death-mode" class="text-[10.5px] font-bold text-terracotta underline">📅 Calendario</button>
+            </span>
             <input type="text" id="member-death-input" value="Presente" required />
+            <input type="date" id="member-death-date" class="hidden" />
+            <span class="flex items-center gap-1.5 mt-1 text-[11px] font-normal text-stone-600">
+              <input type="checkbox" id="member-alive-check" checked style="width:auto;margin:0;" />
+              <span>🌿 Sigue con vida (Presente)</span>
+            </span>
           </label>
         </div>
 
@@ -677,10 +897,114 @@
     </div>
   </div>
 
+  <!-- ========================================================================
+       MODAL 6: REVISIÓN, CORRECCIÓN Y APROBACIÓN OCR DE CARTAS
+       ======================================================================== -->
+  <div id="modal-ocr-review" class="modal-backdrop hidden">
+    <div class="modal-card max-w-2xl">
+      <div class="modal-header">
+        <h3>📝 Revisión y Aprobación OCR de Carta</h3>
+        <button id="btn-close-ocr-review" class="icon-btn">✕</button>
+      </div>
+
+      <div class="space-y-3">
+        <div class="flex items-center justify-between gap-2 flex-wrap bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <div class="text-xs font-semibold text-stone-800" id="ocr-review-letter-title">Carta</div>
+          <span id="ocr-review-status-pill" class="ocr-badge ocr-badge-pending">⏳ Pendiente de revisión</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div id="ocr-review-image-panel" class="border border-stone-300 rounded-lg p-2 bg-stone-100 flex flex-col items-center justify-center min-h-[160px]">
+            <img id="ocr-review-image" alt="Escaneo de carta" class="w-full max-h-64 object-contain rounded hidden" />
+            <span id="ocr-review-no-image" class="text-xs text-stone-500 text-center">Sin imagen escaneada adjunta</span>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span class="text-xs font-bold text-stone-700">Texto extraído / editable:</span>
+              <button type="button" id="btn-modal-rerun-ocr" class="btn-secondary text-[11px] py-1 px-2.5">
+                🔍 Re-escanear OCR
+              </button>
+            </div>
+            <textarea id="ocr-review-textarea" rows="8" class="w-full border border-stone-300 rounded-lg p-2 text-sm bg-white" placeholder="Escribí o corregí la transcripción de la carta..."></textarea>
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <button type="button" id="btn-modal-ocr-clean" class="btn-ghost text-[11px] py-1 px-2">
+                🧹 Limpiar saltos
+              </button>
+              <span id="ocr-modal-progress" class="text-[11px] text-stone-500"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions flex-wrap">
+          <button type="button" id="btn-modal-ocr-save-pending" class="btn-ghost">⏳ Guardar Borrador</button>
+          <button type="button" id="btn-modal-ocr-approve" class="btn-primary">✅ Aprobar y Guardar Texto</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 7: DEJAR COMENTARIO / SUGERENCIA DE LECTOR (PUNTO 6)
+       ======================================================================== -->
+  <div id="modal-submit-comment" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>💬 Sugerencia o Corrección Familiar</h3>
+        <button id="btn-close-submit-comment" class="icon-btn">✕</button>
+      </div>
+      <form id="form-submit-comment" class="modal-form space-y-2">
+        <label>
+          Tu nombre (quien envía la sugerencia):
+          <input type="text" id="comment-author-input" placeholder="Ej: Lucía Álvarez" required />
+        </label>
+        <div class="form-row">
+          <label>
+            Familiar relacionado:
+            <select id="comment-member-select"></select>
+          </label>
+          <label>
+            Tipo de aporte:
+            <select id="comment-category-select">
+              <option value="Corrección de fecha o dato">📅 Corrección de fecha o dato</option>
+              <option value="Sugerencia biográfica">📜 Sugerencia biográfica</option>
+              <option value="Pedido de alta de familiar">👤+ Pedido de alta de familiar</option>
+              <option value="Recuerdo o comentario">💬 Recuerdo o comentario</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Mensaje para los Editores / Co-editores:
+          <textarea id="comment-message-input" rows="4" placeholder="Contanos qué dato habría que corregir, agregar o recordar..." required></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-submit-comment" class="btn-ghost">Cancelar</button>
+          <button type="submit" class="btn-primary">📨 Enviar a Editores</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 8: BANDEJA DE SUGERENCIAS DE LECTORES (SOLO EDITORES/CO-EDITORES)
+       ======================================================================== -->
+  <div id="modal-comments-inbox" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📬 Sugerencias de Lectores</h3>
+        <button id="btn-close-comments-inbox" class="icon-btn">✕</button>
+      </div>
+      <p class="text-xs text-stone-600 mb-3">
+        Aportes y correcciones enviados por familiares en modo Lectura.
+      </p>
+      <div id="comments-inbox-list" class="perm-list"></div>
+    </div>
+  </div>
+
   <!-- TOAST DE NOTIFICACIÓN -->
   <div id="toast" class="toast hidden"></div>
 
-  <script src="./fallback-data.js?v=9"></script>
-  <script src="./app.js?v=9"></script>
+  <script src="./fallback-data.js?v=10"></script>
+  <script src="./app.js?v=10"></script>
 </body>
 </html>

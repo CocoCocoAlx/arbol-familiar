@@ -4,12 +4,20 @@ Pruebas automatizadas de integridad para el Árbol Genealógico (n-nupcias, layo
 Ejecutar con: python3 -m unittest test_server.py
 """
 
+import base64
 import copy
+import io
 import json
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
+
+from PIL import Image, ImageDraw
 
 import server
 
@@ -115,6 +123,106 @@ class FamilyTreeServerTests(unittest.TestCase):
                 tmp_state.write_text("{corrupt-json", encoding="utf-8")
                 recovered = server.load_family_data()
                 self.assertEqual(len(recovered["members"]), len(self.base_data["members"]))
+
+    def test_ocr_audio_comments_and_invite_code_endpoints(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            tmp_state = tmp_path / "familia_estado.json"
+            tmp_uploads = tmp_path / "uploads"
+
+            with mock.patch.object(server, "STATE_FILE", tmp_state), mock.patch.object(
+                server, "UPLOADS_DIR", tmp_uploads
+            ):
+                httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.FamilyTreeHandler)
+                port = httpd.server_address[1]
+                th = threading.Thread(target=httpd.serve_forever, daemon=True)
+                th.start()
+                base_url = f"http://127.0.0.1:{port}"
+
+                try:
+                    # 1. Preprocesado OCR
+                    img = Image.new("RGB", (400, 120), "#f3e8d2")
+                    ImageDraw.Draw(img).text((20, 40), "Carta 1965", fill="#251e19")
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG")
+                    img_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+                    req_ocr = urllib.request.Request(
+                        f"{base_url}/api/ocr",
+                        data=json.dumps({"dataUrl": img_b64}).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req_ocr, timeout=5) as resp:
+                        ocr_res = json.loads(resp.read().decode())
+                    self.assertTrue(ocr_res["ok"])
+                    self.assertTrue(ocr_res["enhancedDataUrl"].startswith("data:image/jpeg;base64,"))
+
+                    # 2. Subida de Audio para Biografía (codec WebM/iOS)
+                    audio_b64 = "data:audio/webm;codecs=opus;base64," + base64.b64encode(b"RIFFaudio").decode()
+                    req_aud = urllib.request.Request(
+                        f"{base_url}/api/family/upload",
+                        data=json.dumps({
+                            "userEmail": "martin.alvarez@gmail.com",
+                            "memberId": "abuelo-pat",
+                            "mediaType": "audio",
+                            "audioTarget": "bio",
+                            "title": "Relato oral",
+                            "date": "2026",
+                            "dataUrl": audio_b64,
+                        }).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req_aud, timeout=5) as resp:
+                        aud_res = json.loads(resp.read().decode())
+                    self.assertTrue(aud_res["ok"])
+                    self.assertTrue(aud_res["member"]["bioAudioUrl"].endswith(".webm"))
+
+                    # 3. Comentario de lector y bloqueo 403 si un lector intenta resolverlo
+                    req_cmt = urllib.request.Request(
+                        f"{base_url}/api/family/comments",
+                        data=json.dumps({
+                            "authorName": "Lucía",
+                            "memberId": "abuelo-pat",
+                            "category": "Corrección de fecha o dato",
+                            "message": "Nació en junio, no en mayo.",
+                        }).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req_cmt, timeout=5) as resp:
+                        cmt_res = json.loads(resp.read().decode())
+                    self.assertTrue(cmt_res["ok"])
+                    cmt_id = cmt_res["comment"]["id"]
+
+                    req_block = urllib.request.Request(
+                        f"{base_url}/api/family/comments/resolve",
+                        data=json.dumps({
+                            "userEmail": "lucia.alvarez@gmail.com",
+                            "commentId": cmt_id,
+                            "action": "resolved",
+                        }).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as ctx:
+                        urllib.request.urlopen(req_block, timeout=5)
+                    self.assertEqual(ctx.exception.code, 403)
+
+                    # 4. Acceso por código PIN sin cuenta de Google
+                    req_pin = urllib.request.Request(
+                        f"{base_url}/api/family/auth-code",
+                        data=json.dumps({"code": "FAMILIA-2026", "name": "Tía Marta"}).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req_pin, timeout=5) as resp:
+                        pin_res = json.loads(resp.read().decode())
+                    self.assertTrue(pin_res["ok"])
+                    self.assertEqual(pin_res["role"], "Lector")
+                finally:
+                    httpd.shutdown()
 
 
 if __name__ == "__main__":

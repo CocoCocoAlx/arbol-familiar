@@ -5,7 +5,7 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 ---
 
 ## 1. Selector de fechas con calendario interactivo
-- **Estado:** `[ ] Pendiente`
+- **Estado:** `[x] Arreglado/Incorporado`
 - **Descripción:** Reemplazar el ingreso manual de texto en los campos de fecha (nacimiento, fallecimiento, cartas, fotos, videos) por un selector de calendario visual (`<input type="date">` o selector con opción de "solo año / fecha aproximada" cuando no se conoce el día exacto).
 - **Archivos involucrados:**
   - `public/index.html` (`#member-birth-input`, `#member-death-input`, `#upload-date-input`)
@@ -15,7 +15,7 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 ---
 
 ## 2. Eliminar opción de maximizar/restaurar en el panel lateral de biografía
-- **Estado:** `[ ] Pendiente`
+- **Estado:** `[x] Arreglado/Incorporado`
 - **Descripción:** Quitar el botón y la lógica que alterna entre vista lateral normal y vista maximizada en el cajón de biografía (`#member-drawer`), manteniendo un único tamaño fijo y cómodo.
 - **Archivos involucrados:**
   - `public/index.html` (`#btn-Expand-drawer` / botón de maximizar en `.drawer-header-actions`)
@@ -25,7 +25,7 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 ---
 
 ## 3. Modo adaptativo para teléfonos (independiente de la versión de escritorio)
-- **Estado:** `[ ] Pendiente (Diseño + Implementación)`
+- **Estado:** `[x] Arreglado/Incorporado`
 - **Descripción:** Diseñar e implementar una experiencia móvil dedicada e independiente del lienzo libre de escritorio, optimizada para pantallas verticales y gestos táctiles.
 - **Propuesta técnica para evaluar al implementar:**
   - Detectar vista móvil (por viewport `< 768px` o selector manual Escritorio / Móvil).
@@ -36,7 +36,7 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 ---
 
 ## 4. Corregir bug: clic en algunas partes de las tarjetas abre "Crear familiar"
-- **Estado:** `[ ] Pendiente (Bugfix prioritario)`
+- **Estado:** `[x] Arreglado/Incorporado`
 - **Descripción:** Actualmente, hacer clic en ciertas zonas o elementos internos de las tarjetas del árbol (`g.tree-node`) dispara la acción de "Crear familiar" (o clic en el lienzo/botón superpuesto) en lugar de abrir la biografía del familiar.
 - **Causa probable a revisar en lote:**
   - Propagación de eventos (`e.stopPropagation()`) entre `setupNodeDragging()`, el `click` del nodo y los manejadores del canvas o botones rápidos, o superposición de áreas de clic.
@@ -47,7 +47,7 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 ---
 
 ## 5. Foto de retrato circular con encuadre facial centrado
-- **Estado:** `[ ] Pendiente`
+- **Estado:** `[x] Arreglado/Incorporado`
 - **Descripción:** Permitir subir o elegir una foto real de retrato para cada perfil del árbol, recortada en un círculo y con ajuste/encuadre centrado en el rostro (reemplazando la ilustración SVG genérica cuando el familiar tiene foto de perfil).
 - **Propuesta técnica para evaluar al implementar:**
   - Selector de imagen en el modal de familiar con vista previa circular interactiva (arrastrar para centrar cara + deslizador de zoom, o detección automática con `FaceDetector` API / recorte manual en `<canvas>` de `256x256` WebP/JPEG).
@@ -58,7 +58,7 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 ---
 
 ## 6. Sistema de comentarios y sugerencias de lectores para editores/coeditores
-- **Estado:** `[ ] Pendiente`
+- **Estado:** `[x] Arreglado/Incorporado`
 - **Descripción:** Crear un canal para que los usuarios con rol **Lector** puedan dejar comentarios, correcciones históricas, sugerencias o peticiones (generales o asociadas a una persona específica del árbol) que sean visibles en una bandeja para **Editores** y **Coeditores**.
 - **Propuesta técnica para evaluar al implementar:**
   - Botón **"💬 Dejar sugerencia / comentario"** visible para lectores en la barra superior y dentro de la ficha de cada familiar.
@@ -71,7 +71,7 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 ---
 
 ## 7. Bloquear acceso de Lectores al panel de "Administración y seguridad" (incluso en modo local)
-- **Estado:** `[ ] Pendiente (Seguridad / Permisos UI)`
+- **Estado:** `[x] Arreglado/Incorporado`
 - **Descripción:** Los usuarios en modo **Lector** no deben ver ni poder abrir el botón ni el modal de **Administración y seguridad** (`#btn-approvals-modal` / `#approvals-modal`), ni siquiera cuando la aplicación corre en modo local.
 - **Nota de diseño a contemplar:**
   - Separar el **cambio de sesión / ingreso como editor** (un botón discreto de *"🔑 Ingresar como editor"* con clave/PIN o cuenta) del panel de **Administración y seguridad**, de modo que el panel administrativo completo solo exista y sea accesible cuando el rol activo sea `admin` (Editor) o `coeditor`.
@@ -83,7 +83,7 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 ---
 
 ## 8. Alternativa de verificación para parientes sin cuenta de Google
-- **Estado:** `[ ] Pendiente (Definición de arquitectura + Implementación)`
+- **Estado:** `[x] Arreglado/Incorporado`
 - **Descripción:** Muchos familiares (especialmente personas mayores) no tienen cuenta de Google o no recuerdan su contraseña para autenticarse con Google OAuth. Se necesita un método alternativo sencillo y seguro.
 - **Alternativas propuestas para elegir o combinar:**
   1. **Código de Invitación Familiar / PIN Personal (Recomendado):** El Editor genera desde el panel un código corto o enlace único para ese familiar (ej. `FAM-MARTA-4821` o un link directo con token). El familiar entra con su nombre y ese código, sin necesitar correo electrónico ni cuenta de Google.

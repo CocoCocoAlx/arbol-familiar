@@ -58,7 +58,39 @@ const state = {
   cursiveMode: true,
 
   // Archivo temporal seleccionado en el modal de subida
-  pendingUploadDataUrl: null
+  pendingUploadDataUrl: null,
+  pendingUploadAudioDataUrl: null,
+  pendingEnhancedScanUrl: null,
+  ocrStatus: "manual",
+  ocrRawText: "",
+
+  // Grabación de audio en vivo (Android / iOS / PC)
+  mediaRecorder: null,
+  recordingChunks: [],
+  recordingTimer: null,
+  recordingSeconds: 0,
+
+  // Edición/revisión OCR sobre una carta ya guardada
+  ocrReviewMemberId: null,
+  ocrReviewLetterId: null,
+
+  // Estado para modo móvil Familiar Foco, comentarios y acceso por PIN
+  focusMemberId: null,
+  readerComments: [],
+  currentAccessRole: null,
+  currentDisplayName: "",
+
+  // Recorte circular de retrato (Punto 5)
+  avatarCrop: {
+    img: null,
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    modified: false
+  }
 };
 
 const NODE_WIDTH = 235;
@@ -86,12 +118,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupApprovalsModal();
   setupHistoryModal();
   setupUploadModal();
+  setupOcrReviewModal();
+  setupCommentsModals();
+  setupDatePickers();
+  setupAvatarCropper();
   setupMemberModal();
 
   await fetchFamilyTree();
+  await checkUrlInviteCode();
   updateRoleUI();
   updateTouchModeUI();
   fitTreeToScreen(false);
+
+  // Punto 3: En teléfonos móviles iniciar automáticamente en el modo adaptativo "Familiar Foco"
+  if (window.innerWidth < 768) {
+    switchViewMode("focus");
+  }
 });
 
 function registerServiceWorker() {
@@ -176,7 +218,13 @@ function canCurrentUserEdit() {
   const meta = getMetadata();
   const email = state.currentUserEmail.toLowerCase();
   if (email === meta.ownerEmail.toLowerCase()) return true;
-  return meta.coEditors.some((ce) => ce.toLowerCase() === email);
+  if (meta.coEditors.some((ce) => ce.toLowerCase() === email)) return true;
+  if (email.startsWith("codigo:")) {
+    const codeVal = email.split("codigo:")[1].trim().toUpperCase();
+    const found = (meta.accessCodes || []).find((c) => (c.code || "").toUpperCase() === codeVal);
+    return found ? found.role === "Co-editor" : state.currentAccessRole === "Co-editor";
+  }
+  return false;
 }
 
 function getUserRoleLabel(email) {
@@ -184,6 +232,12 @@ function getUserRoleLabel(email) {
   const clean = (email || "").toLowerCase();
   if (clean === meta.ownerEmail.toLowerCase()) return "👑 Propietario";
   if (meta.coEditors.some((ce) => ce.toLowerCase() === clean)) return "✍️ Co-editor";
+  if (clean.startsWith("codigo:")) {
+    const codeVal = clean.split("codigo:")[1].trim().toUpperCase();
+    const found = (meta.accessCodes || []).find((c) => (c.code || "").toUpperCase() === codeVal);
+    const r = found?.role || state.currentAccessRole || "Lector";
+    return r === "Co-editor" ? "✍️ Co-editor (PIN)" : "👁️ Lector (PIN)";
+  }
   return "👁️ Lector";
 }
 
@@ -193,11 +247,14 @@ function updateRoleUI() {
   const roleBadge = document.getElementById("role-status-badge");
   const editorGroup = document.getElementById("editor-actions-group");
   const editorQuickIcons = document.getElementById("editor-quick-icons");
+  const adminSecuritySection = document.getElementById("admin-security-section");
+  const quickSwitchWrap = document.getElementById("sidebar-quick-switch-wrap");
   const drawerEditBox = document.getElementById("drawer-edit-actions");
   const roleTag = document.getElementById("user-role-tag");
   const emailLabel = document.getElementById("user-email-label");
   const approvalsBtn = document.getElementById("btn-open-approvals");
   const approvalsBadge = document.getElementById("approvals-count-badge");
+  const commentsBadge = document.getElementById("comments-count-badge");
   const hamburgerBadge = document.getElementById("hamburger-badge");
   const touchModeBtn = document.getElementById("btn-toggle-touch-mode");
 
@@ -206,7 +263,11 @@ function updateRoleUI() {
     updateTouchModeUI();
   }
 
-  if (emailLabel) emailLabel.textContent = state.currentUserEmail;
+  if (emailLabel) {
+    emailLabel.textContent = state.currentDisplayName
+      ? `${state.currentDisplayName} (${state.currentUserEmail})`
+      : state.currentUserEmail;
+  }
   if (roleTag) {
     roleTag.textContent = isOwner ? "👑 Propietario" : canEdit ? "✍️ Co-editor" : "👁️ Solo Lectura";
   }
@@ -226,20 +287,29 @@ function updateRoleUI() {
 
   if (editorGroup) editorGroup.classList.toggle("hidden", !canEdit);
   if (editorQuickIcons) editorQuickIcons.classList.toggle("hidden", !canEdit);
+  // Punto 7: Bloquear acceso de Lectores a "Administración y Seguridad" incluso en modo local
+  if (adminSecuritySection) adminSecuritySection.classList.toggle("hidden", !canEdit);
+  if (quickSwitchWrap) quickSwitchWrap.classList.toggle("hidden", !canEdit);
   if (drawerEditBox) drawerEditBox.classList.toggle("hidden", !canEdit);
   if (touchModeBtn) touchModeBtn.classList.toggle("hidden", !canEdit);
 
   const pendingCount = (state.pendingApprovals || []).length;
+  const pendingComments = (state.readerComments || []).filter((c) => c.status !== "resolved").length;
   if (approvalsBadge) {
     approvalsBadge.textContent = pendingCount;
     approvalsBadge.style.background = pendingCount > 0 ? "#d94b38" : "#e9dfd0";
     approvalsBadge.style.color = pendingCount > 0 ? "#fff" : "var(--ink-primary)";
   }
+  if (commentsBadge) {
+    commentsBadge.textContent = pendingComments;
+    commentsBadge.style.background = pendingComments > 0 ? "#c8963e" : "#e9dfd0";
+    commentsBadge.style.color = pendingComments > 0 ? "#fff" : "var(--ink-primary)";
+  }
   if (approvalsBtn) {
     approvalsBtn.style.borderColor = pendingCount > 0 ? "#d94b38" : "var(--border-soft)";
   }
   if (hamburgerBadge) {
-    hamburgerBadge.classList.toggle("hidden", pendingCount === 0);
+    hamburgerBadge.classList.toggle("hidden", !canEdit || (pendingCount === 0 && pendingComments === 0));
   }
 
   renderAuthSelectOptions();
@@ -289,6 +359,10 @@ async function fetchFamilyTree() {
     state.members = data.members || [];
     state.pendingApprovals = data.pendingApprovals || [];
     state.historyLog = data.historyLog || [];
+    state.readerComments = data.readerComments || [];
+    if (!state.focusMemberId && state.members.length > 0) {
+      state.focusMemberId = state.members[0].id;
+    }
     ensurePositiveCanvasCoordinates();
     renderAll();
   } catch (err) {
@@ -321,6 +395,7 @@ function renderAll() {
   renderConnections();
   renderMinimap();
   renderCompactListView();
+  renderFocusView();
   updateMemberCountBadge();
   updateRoleUI();
 }
@@ -574,6 +649,9 @@ function renderGenerationBands() {
    ILUSTRACIONES SVG ULTRALIGERAS (RETRATOS Y FOTOS DE ÉPOCA)
    ========================================================================== */
 function renderPortraitSVG(member) {
+  if (member && member.avatarUrl) {
+    return `<img src="${escapeHTML(member.avatarUrl)}" alt="${escapeHTML(member.name)}" class="w-full h-full object-cover rounded-full block" />`;
+  }
   const bg = escapeHTML(member.avatarColor || "#8C5A3C");
   const initials = escapeHTML(member.avatarInitials || (member.name || "").slice(0, 2).toUpperCase());
   const isElder = Number(member.generation) <= 1;
@@ -930,10 +1008,17 @@ function setupCanvasInteractions() {
     closeSidebarMenu();
   });
 
-  // 1) Eventos Pointer (unificados para táctil y mouse)
+  // 1) Eventos Pointer (unificados para táctil y mouse - Punto 4 fix propagación)
   viewport.addEventListener("pointerdown", (e) => {
     if (state.isPinching) return;
-    if (e.target.closest(".canvas-hud-bottom") || e.target.closest(".minimap-card")) {
+    if (document.querySelector(".modal-backdrop:not(.hidden)")) return;
+    if (
+      e.target.closest(".canvas-hud-bottom") ||
+      e.target.closest(".minimap-card") ||
+      e.target.closest(".topbar") ||
+      e.target.closest(".member-drawer") ||
+      e.target.closest(".sidebar-drawer")
+    ) {
       return;
     }
 
@@ -1217,8 +1302,10 @@ function renderMinimap() {
 function openMemberDrawer(memberId) {
   stopVoicePlayback();
   state.selectedMemberId = memberId;
+  state.focusMemberId = memberId;
   renderNodes();
   renderMinimap();
+  renderFocusView();
 
   const member = state.members.find((m) => m.id === memberId);
   if (!member) return;
@@ -1282,9 +1369,60 @@ function openMemberDrawer(memberId) {
   document.getElementById("tab-count-videos").textContent = videos.length;
 
   updateRoleUI();
+  renderMemberBioAudio(member);
   renderMemberLetters(member);
   renderMemberPhotos(member);
   renderMemberVideos(member);
+}
+
+function renderMemberBioAudio(member) {
+  const container = document.getElementById("bio-audio-container");
+  if (!container) return;
+
+  const hasCustomAudio = Boolean(member.bioAudioUrl);
+  const subtitle = hasCustomAudio
+    ? `🎙️ ${escapeHTML(member.bioAudioTitle || "Grabación original en Drive")} (${escapeHTML(member.bioAudioSizeKB || 40)} KB)`
+    : `🔊 Voz en español generada desde la biografía`;
+
+  const uploadBtnHTML = canCurrentUserEdit()
+    ? `<button type="button" id="btn-upload-bio-audio" class="btn-secondary text-[11px] py-1 px-2.5 whitespace-nowrap">
+         🎙️ ${hasCustomAudio ? "Cambiar Audio" : "+ Audio Bio"}
+       </button>`
+    : "";
+
+  container.innerHTML = `
+    <div class="bio-audio-card">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <button type="button" id="btn-play-bio-audio" class="btn-play-voice" data-play-bio="${escapeHTML(member.id)}" title="Escuchar biografía">
+          ▶
+        </button>
+        <div class="min-w-0">
+          <div class="text-xs font-bold text-white truncate">
+            ${hasCustomAudio ? "Audio de Biografía (Real)" : "Escuchar Biografía en Español"}
+          </div>
+          <div class="text-[11px] text-amber-100/80 truncate">${subtitle}</div>
+        </div>
+      </div>
+      ${uploadBtnHTML}
+    </div>
+  `;
+
+  container.querySelector("#btn-play-bio-audio")?.addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    if (state.speakingLetterId === "bio-voice") {
+      stopVoicePlayback();
+      return;
+    }
+    if (hasCustomAudio) {
+      playDirectAudioUrl(member.bioAudioUrl, "bio-voice", btn, `🎙️ Reproduciendo audio de ${member.name}`);
+    } else {
+      speakTextWithMemberVoice(member, [member.bio], "bio-voice", btn);
+    }
+  });
+
+  container.querySelector("#btn-upload-bio-audio")?.addEventListener("click", () => {
+    openUploadModal(member.id, "audio", "bio");
+  });
 }
 
 function closeMemberDrawer() {
@@ -1292,7 +1430,6 @@ function closeMemberDrawer() {
   const drawer = document.getElementById("member-drawer");
   const backdrop = document.getElementById("member-drawer-backdrop");
   drawer?.classList.add("hidden");
-  drawer?.classList.remove("expanded-full");
   backdrop?.classList.add("hidden");
   state.selectedMemberId = null;
   renderNodes();
@@ -1375,7 +1512,10 @@ function renderMemberLetters(member) {
   const voice = getMemberVoiceConfig(member);
 
   const uploadBtnHTML = canCurrentUserEdit()
-    ? `<button class="btn-primary" id="btn-upload-letter-inline">📤 + Subir Carta a Drive</button>`
+    ? `<div class="flex gap-1.5 flex-wrap justify-end">
+         <button class="btn-secondary text-xs py-1.5 px-2.5" id="btn-upload-letter-audio-inline">🎙️ + Audio</button>
+         <button class="btn-primary text-xs py-1.5 px-3" id="btn-upload-letter-inline">📤 + Subir Carta</button>
+       </div>`
     : "";
 
   if (letters.length === 0) {
@@ -1384,7 +1524,7 @@ function renderMemberLetters(member) {
         <p style="margin-bottom:12px;">Todavía no hay cartas manuscritas para <strong>${escapeHTML(member.name)}</strong>, pero su voz en español está lista.</p>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <button class="btn-secondary" id="btn-listen-bio-voice">🔊 Escuchar biografía en español</button>
-          ${uploadBtnHTML}
+          ${canCurrentUserEdit() ? `<button class="btn-primary" id="btn-upload-letter-inline">📤 + Subir Carta (OCR opcional)</button>` : ""}
         </div>
       </div>
     `;
@@ -1407,26 +1547,51 @@ function renderMemberLetters(member) {
           .map((_, idx) => `<div class="wave-bar" data-bar="${idx}"></div>`)
           .join("");
 
-        const paragraphsHTML = (letter.paragraphs || [])
-          .map((p, idx) => `<p data-pidx="${idx}">${escapeHTML(p)}</p>`)
-          .join("");
+        const hasCustomAudio = Boolean(letter.customAudioUrl);
+        const paragraphs = letter.paragraphs || [];
+        const paragraphsHTML =
+          paragraphs.length > 0
+            ? paragraphs.map((p, idx) => `<p data-pidx="${idx}">${escapeHTML(p)}</p>`).join("")
+            : `<p style="color:#7c6a58;font-style:italic;font-size:12.5px;">🖼️ Carta guardada como escaneo visual sin transcripción aún.</p>`;
 
         const scanImgHTML = letter.scanImageUrl
           ? `<div style="margin-bottom:10px;border-radius:8px;overflow:hidden;border:1px solid #cbbba4;">
-               <img src="${escapeHTML(letter.scanImageUrl)}" alt="${escapeHTML(letter.title)}" style="width:100%;max-height:200px;object-fit:cover;display:block;" />
+               <img src="${escapeHTML(letter.scanImageUrl)}" alt="${escapeHTML(letter.title)}" style="width:100%;max-height:220px;object-fit:cover;display:block;" />
              </div>`
+          : "";
+
+        let ocrBadgeHTML = "";
+        if (letter.ocrStatus === "approved") {
+          ocrBadgeHTML = `<span class="ocr-badge ocr-badge-approved">✅ OCR Aprobado</span>`;
+        } else if (letter.ocrStatus === "pending_review") {
+          ocrBadgeHTML = `<span class="ocr-badge ocr-badge-pending">⏳ OCR por revisar</span>`;
+        } else if (letter.ocrStatus === "image_only") {
+          ocrBadgeHTML = `<span class="ocr-badge ocr-badge-manual">🖼️ Solo escaneo</span>`;
+        }
+
+        const ocrReviewBtn =
+          canCurrentUserEdit() && (letter.scanImageUrl || letter.ocrEnabled || letter.ocrStatus === "pending_review")
+            ? `<button class="btn-secondary text-[11px] py-1 px-2" data-open-ocr-review="${escapeHTML(letter.id)}">
+                 📝 ${letter.ocrStatus === "pending_review" ? "Corregir / Aprobar OCR" : "Editar / OCR"}
+               </button>`
+            : "";
+
+        const attachAudioBtn = canCurrentUserEdit()
+          ? `<button class="btn-ghost text-[11px] py-1 px-2" data-attach-audio-letter="${escapeHTML(letter.id)}" title="Subir o grabar audio para esta carta">
+               🎙️ Audio
+             </button>`
           : "";
 
         return `
           <div class="letter-block" data-letter-id="${escapeHTML(letter.id)}">
             <div class="voice-player-box">
               <div class="voice-player-top">
-                <button class="btn-play-voice" data-play-letter="${escapeHTML(letter.id)}" title="Leer carta en voz alta">
+                <button class="btn-play-voice" data-play-letter="${escapeHTML(letter.id)}" title="${hasCustomAudio ? "Reproducir audio original" : "Leer carta en voz alta"}">
                   ▶
                 </button>
                 <div class="voice-meta">
-                  <div class="voice-title">🔊 ${escapeHTML(voice.label)}</div>
-                  <div class="voice-subtitle">${escapeHTML(voice.sampleSource)} · Español (${escapeHTML(letter.driveSizeKB || 18)} KB)</div>
+                  <div class="voice-title">${hasCustomAudio ? `🎙️ Audio original · ${escapeHTML(letter.customAudioTitle || letter.title)}` : `🔊 ${escapeHTML(voice.label)}`}</div>
+                  <div class="voice-subtitle">${hasCustomAudio ? `Grabación real en Drive (${escapeHTML(letter.customAudioSizeKB || 35)} KB)` : `${escapeHTML(voice.sampleSource)} · Español (${escapeHTML(letter.driveSizeKB || 18)} KB)`}</div>
                 </div>
               </div>
               <div class="waveform-bars" id="waveform-${escapeHTML(letter.id)}">
@@ -1440,7 +1605,10 @@ function renderMemberLetters(member) {
                   <strong>${escapeHTML(letter.title)}</strong>
                   <div class="paper-date">${escapeHTML(letter.location || "")} · ${escapeHTML(letter.date)}</div>
                 </div>
-                <div class="paper-stamp">Drive</div>
+                <div class="flex items-center gap-1 flex-wrap justify-end">
+                  ${ocrBadgeHTML}
+                  <div class="paper-stamp">Drive</div>
+                </div>
               </div>
 
               ${scanImgHTML}
@@ -1453,9 +1621,13 @@ function renderMemberLetters(member) {
 
               <div class="paper-toolbar">
                 <span>☁️ ${escapeHTML(letter.drivePath || "Google Drive del Propietario")}</span>
-                <button class="btn-ghost btn-toggle-font" style="padding:3px 8px;font-size:11px;">
-                  ${state.cursiveMode ? "🔤 Imprenta" : "✒️ Manuscrita"}
-                </button>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  ${ocrReviewBtn}
+                  ${attachAudioBtn}
+                  <button class="btn-ghost btn-toggle-font" style="padding:3px 8px;font-size:11px;">
+                    ${state.cursiveMode ? "🔤 Imprenta" : "✒️ Manuscrita"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1467,6 +1639,22 @@ function renderMemberLetters(member) {
     openUploadModal(member.id, "letter");
   });
 
+  container.querySelector("#btn-upload-letter-audio-inline")?.addEventListener("click", () => {
+    openUploadModal(member.id, "audio", `letter:${letters[0]?.id || ""}`);
+  });
+
+  container.querySelectorAll("[data-attach-audio-letter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openUploadModal(member.id, "audio", `letter:${btn.dataset.attachAudioLetter}`);
+    });
+  });
+
+  container.querySelectorAll("[data-open-ocr-review]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openOcrReviewModal(member.id, btn.dataset.openOcrReview);
+    });
+  });
+
   container.querySelectorAll("[data-play-letter]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const letterId = btn.dataset.playLetter;
@@ -1475,6 +1663,8 @@ function renderMemberLetters(member) {
 
       if (state.speakingLetterId === letterId) {
         stopVoicePlayback();
+      } else if (letter.customAudioUrl) {
+        playDirectAudioUrl(letter.customAudioUrl, letterId, btn, `🎙️ Reproduciendo grabación de ${letter.title}`);
       } else {
         speakLetter(member, letter, btn);
       }
@@ -1613,9 +1803,49 @@ function speakLetter(member, letter, playBtn) {
   readNextParagraph();
 }
 
-function speakTextWithMemberVoice(member, paragraphs, tempId) {
+function playDirectAudioUrl(url, playingKey, playBtn, toastMsg = "") {
+  stopVoicePlayback();
+  state.speakingLetterId = playingKey;
+  if (playBtn) playBtn.textContent = "⏸";
+
+  const waveform = document.getElementById(`waveform-${playingKey}`);
+  if (waveform) waveform.classList.add("playing");
+
+  if (state.waveInterval) clearInterval(state.waveInterval);
+  state.waveInterval = setInterval(() => {
+    if (state.speakingLetterId !== playingKey) {
+      clearInterval(state.waveInterval);
+      state.waveInterval = null;
+      return;
+    }
+    if (waveform) {
+      waveform.querySelectorAll(".wave-bar").forEach((bar) => {
+        bar.style.height = `${4 + Math.floor(Math.random() * 16)}px`;
+      });
+    }
+  }, 120);
+
+  const audio = new Audio(url);
+  audio.setAttribute("playsinline", "true");
+  state.currentAudio = audio;
+
+  audio.onended = () => stopVoicePlayback();
+  audio.onerror = () => {
+    stopVoicePlayback();
+    showToast("⚠️ No se pudo reproducir el archivo de audio.");
+  };
+
+  if (toastMsg) showToast(toastMsg);
+  audio.play().catch(() => {
+    stopVoicePlayback();
+    showToast("⚠️ Tocá nuevamente para permitir la reproducción de audio.");
+  });
+}
+
+function speakTextWithMemberVoice(member, paragraphs, tempId, playBtn = null) {
   stopVoicePlayback();
   state.speakingLetterId = tempId;
+  if (playBtn) playBtn.textContent = "⏸";
   const { espeakVoice, espeakSpeed, espeakPitch } = getMemberVoiceConfig(member);
   const text = paragraphs.join(" ");
 
@@ -1824,6 +2054,158 @@ function renderCompactListView() {
 }
 
 /* ==========================================================================
+   MODO ADAPTATIVO MÓVIL: FAMILIAR FOCO (INDEPENDIENTE DEL LIENZO - PUNTO 3)
+   ========================================================================== */
+function renderFocusView() {
+  const container = document.getElementById("focus-container");
+  if (!container || !state.members || state.members.length === 0) return;
+
+  const byId = Object.fromEntries(state.members.map((m) => [m.id, m]));
+  const active =
+    byId[state.focusMemberId] ||
+    byId[state.selectedMemberId] ||
+    state.members[0];
+  state.focusMemberId = active.id;
+
+  const parents = (active.parentIds || []).map((pid) => byId[pid]).filter(Boolean);
+  const partnerships = getMemberPartnerships(active)
+    .map((p) => ({ ...p, member: byId[p.partnerId] }))
+    .filter((p) => Boolean(p.member));
+  const children = state.members.filter((m) => (m.parentIds || []).includes(active.id));
+  const siblings = state.members.filter(
+    (m) =>
+      m.id !== active.id &&
+      (active.parentIds || []).length > 0 &&
+      (m.parentIds || []).some((pid) => (active.parentIds || []).includes(pid))
+  );
+
+  const miniCardHTML = (m, badgeText = "") => `
+    <button type="button" data-focus-target="${escapeHTML(m.id)}"
+      class="flex items-center gap-2.5 p-2.5 bg-white border border-stone-300 rounded-xl text-left shadow-sm active:scale-95 transition">
+      <div class="w-10 h-10 rounded-full overflow-hidden border border-stone-300 shrink-0">${renderPortraitSVG(m)}</div>
+      <div class="min-w-0 flex-1">
+        ${badgeText ? `<div class="text-[10px] font-bold text-terracotta truncate">${escapeHTML(badgeText)}</div>` : ""}
+        <div class="text-xs font-bold text-stone-900 truncate">${escapeHTML(m.name)}</div>
+        <div class="text-[11px] text-stone-500 truncate">${escapeHTML(m.birthYear)} – ${escapeHTML(m.deathYear)}</div>
+      </div>
+    </button>
+  `;
+
+  container.innerHTML = `
+    <div class="bg-amber-50/90 border border-stone-300 rounded-xl p-2.5 flex items-center justify-between gap-2">
+      <div class="text-xs font-bold text-stone-700">🎯 Familiar Foco · ${getGenerationLabel(Number(active.generation ?? 1))}</div>
+      <select id="focus-member-jump" class="border border-stone-300 rounded-lg px-2 py-1 text-xs bg-white max-w-[160px]">
+        ${state.members
+          .map((m) => `<option value="${escapeHTML(m.id)}" ${m.id === active.id ? "selected" : ""}>${escapeHTML(m.name)}</option>`)
+          .join("")}
+      </select>
+    </div>
+
+    ${
+      parents.length > 0
+        ? `<div>
+             <div class="text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5 px-1">⬆️ Padres</div>
+             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+               ${parents.map((p) => miniCardHTML(p, p.role)).join("")}
+             </div>
+           </div>`
+        : ""
+    }
+
+    <div class="bg-white border-2 border-terracotta rounded-2xl p-4 shadow-md space-y-3">
+      <div class="flex items-center gap-3">
+        <div class="w-16 h-16 rounded-full overflow-hidden border-2 border-stone-300 shrink-0">${renderPortraitSVG(active)}</div>
+        <div class="min-w-0 flex-1">
+          <span class="role-badge">${escapeHTML(active.role)}</span>
+          <h3 class="text-lg font-bold text-stone-900 leading-tight mt-0.5">${escapeHTML(active.name)}</h3>
+          <div class="text-xs text-stone-600">${escapeHTML(active.birthYear)} – ${escapeHTML(active.deathYear)} · ${escapeHTML(active.birthPlace || "")}</div>
+        </div>
+      </div>
+      <p class="text-xs text-stone-700 line-clamp-3 leading-relaxed">${escapeHTML(active.bio || "")}</p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="btn-focus-open-drawer" class="btn-primary flex-1 text-xs py-2">
+          📜 Abrir Biografía, Cartas (${(active.letters || []).length}) y Fotos (${(active.photos || []).length})
+        </button>
+      </div>
+    </div>
+
+    ${
+      partnerships.length > 0
+        ? `<div>
+             <div class="text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5 px-1">💍 Parejas / Nupcias</div>
+             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+               ${partnerships
+                 .map((p) => {
+                   const st = p.status === "previous" ? "♡ Ex-pareja" : p.status === "deceased" ? "† Fallecida" : "♥ Actual";
+                   return miniCardHTML(p.member, `${p.order || 1}ª · ${st}`);
+                 })
+                 .join("")}
+             </div>
+           </div>`
+        : ""
+    }
+
+    ${
+      siblings.length > 0
+        ? `<div>
+             <div class="text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5 px-1">↔️ Hermanos / as</div>
+             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+               ${siblings.map((s) => miniCardHTML(s, s.role)).join("")}
+             </div>
+           </div>`
+        : ""
+    }
+
+    ${
+      children.length > 0
+        ? `<div>
+             <div class="text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5 px-1">⬇️ Hijos / Descendientes</div>
+             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+               ${children.map((c) => miniCardHTML(c, c.role)).join("")}
+             </div>
+           </div>`
+        : ""
+    }
+  `;
+
+  container.querySelector("#focus-member-jump")?.addEventListener("change", (e) => {
+    state.focusMemberId = e.target.value;
+    renderFocusView();
+  });
+
+  container.querySelector("#btn-focus-open-drawer")?.addEventListener("click", () => {
+    openMemberDrawer(active.id);
+  });
+
+  container.querySelectorAll("[data-focus-target]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.focusMemberId = btn.dataset.focusTarget;
+      renderFocusView();
+    });
+  });
+}
+
+function switchViewMode(mode) {
+  state.viewMode = mode;
+  const btnFocus = document.getElementById("btn-view-focus");
+  const btnCanvas = document.getElementById("btn-view-canvas");
+  const btnList = document.getElementById("btn-view-list");
+  const focusView = document.getElementById("focus-viewport");
+  const canvasView = document.getElementById("canvas-viewport");
+  const listView = document.getElementById("list-viewport");
+
+  btnFocus?.classList.toggle("active", mode === "focus");
+  btnCanvas?.classList.toggle("active", mode === "canvas");
+  btnList?.classList.toggle("active", mode === "list");
+
+  focusView?.classList.toggle("hidden", mode !== "focus");
+  canvasView?.classList.toggle("hidden", mode !== "canvas");
+  listView?.classList.toggle("hidden", mode !== "list");
+
+  if (mode === "focus") renderFocusView();
+}
+
+/* ==========================================================================
    MENÚ HAMBURGUESA LATERAL (☰), BARRA COMPACTA, BUSCADOR Y LOGIN
    ========================================================================== */
 function openSidebarMenu() {
@@ -1836,6 +2218,27 @@ function closeSidebarMenu() {
   document.getElementById("sidebar-backdrop")?.classList.add("hidden");
 }
 
+async function checkUrlInviteCode() {
+  const params = new URLSearchParams(window.location.search);
+  const codeParam = (params.get("codigo") || "").trim().toUpperCase();
+  if (!codeParam) return;
+  try {
+    const res = await fetch("/api/family/auth-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: codeParam, name: "Familiar Invitado" })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      state.currentUserEmail = json.sessionId;
+      state.currentDisplayName = json.displayName;
+      state.currentAccessRole = json.role;
+      document.getElementById("auth-modal")?.classList.add("hidden");
+      showToast(`🔑 Ingresaste con código ${codeParam} (${json.role})`);
+    }
+  } catch (_) {}
+}
+
 function setupAuthEvents() {
   const modal = document.getElementById("auth-modal");
   const select = document.getElementById("auth-email-select");
@@ -1844,6 +2247,80 @@ function setupAuthEvents() {
   const userChip = document.getElementById("user-chip");
   const btnOpenAuth = document.getElementById("btn-open-auth-modal");
   const sidebarSwitcher = document.getElementById("sidebar-role-switcher");
+
+  // Pestañas Google vs Código PIN (Punto 8)
+  const tabGoogle = document.getElementById("btn-auth-tab-google");
+  const tabCode = document.getElementById("btn-auth-tab-code");
+  const panelGoogle = document.getElementById("auth-panel-google");
+  const panelCode = document.getElementById("auth-panel-code");
+
+  tabGoogle?.addEventListener("click", () => {
+    panelGoogle?.classList.remove("hidden");
+    panelCode?.classList.add("hidden");
+    tabGoogle.className = "flex-1 py-1.5 px-2 rounded-md text-xs font-bold bg-white shadow-sm text-stone-800 border border-stone-200";
+    tabCode.className = "flex-1 py-1.5 px-2 rounded-md text-xs font-bold text-stone-600";
+  });
+
+  tabCode?.addEventListener("click", () => {
+    panelCode?.classList.remove("hidden");
+    panelGoogle?.classList.add("hidden");
+    tabCode.className = "flex-1 py-1.5 px-2 rounded-md text-xs font-bold bg-white shadow-sm text-stone-800 border border-stone-200";
+    tabGoogle.className = "flex-1 py-1.5 px-2 rounded-md text-xs font-bold text-stone-600";
+  });
+
+  document.getElementById("btn-code-login")?.addEventListener("click", async () => {
+    const name = document.getElementById("auth-code-name")?.value.trim() || "Familiar Invitado";
+    const code = (document.getElementById("auth-code-pin")?.value || "").trim().toUpperCase();
+    const codeErr = document.getElementById("auth-code-error");
+
+    if (!code) {
+      if (codeErr) {
+        codeErr.textContent = "⚠️ Ingresá un código o PIN familiar.";
+        codeErr.classList.remove("hidden");
+      }
+      return;
+    }
+
+    let ok = false;
+    let role = "Lector";
+    let sessionId = `codigo:${code}`;
+    try {
+      const res = await fetch("/api/family/auth-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name })
+      });
+      const json = await res.json();
+      if (json.ok) {
+        ok = true;
+        role = json.role;
+        sessionId = json.sessionId;
+      } else if (codeErr) {
+        codeErr.textContent = `⚠️ ${json.error || "Código inválido"}`;
+        codeErr.classList.remove("hidden");
+      }
+    } catch (_) {
+      const codes = getMetadata().accessCodes || [];
+      const found = codes.find((c) => (c.code || "").toUpperCase() === code);
+      if (found) {
+        ok = true;
+        role = found.role || "Lector";
+      } else if (codeErr) {
+        codeErr.textContent = "⚠️ Código familiar inválido.";
+        codeErr.classList.remove("hidden");
+      }
+    }
+
+    if (ok) {
+      codeErr?.classList.add("hidden");
+      state.currentUserEmail = sessionId;
+      state.currentDisplayName = name;
+      state.currentAccessRole = role;
+      updateRoleUI();
+      modal.classList.add("hidden");
+      showToast(`🔓 Bienvenido/a ${name} (${role})`);
+    }
+  });
 
   btnLogin?.addEventListener("click", () => {
     const email = select.value;
@@ -1856,6 +2333,8 @@ function setupAuthEvents() {
     }
     errorBox.classList.add("hidden");
     state.currentUserEmail = email;
+    state.currentDisplayName = "";
+    state.currentAccessRole = null;
     updateRoleUI();
     modal.classList.add("hidden");
     showToast(`Sesión: ${email} (${getUserRoleLabel(email)})`);
@@ -1875,6 +2354,8 @@ function setupAuthEvents() {
 
   sidebarSwitcher?.addEventListener("change", () => {
     state.currentUserEmail = sidebarSwitcher.value;
+    state.currentDisplayName = "";
+    state.currentAccessRole = null;
     updateRoleUI();
     if (state.selectedMemberId) openMemberDrawer(state.selectedMemberId);
     showToast(`Rol cambiado a ${getUserRoleLabel(state.currentUserEmail)}`);
@@ -1900,31 +2381,18 @@ function setupSidebarAndToolbarEvents() {
     });
   });
 
-  // Conmutador Vista Lienzo / Vista Lista en la barra superior
-  const btnCanvas = document.getElementById("btn-view-canvas");
-  const btnList = document.getElementById("btn-view-list");
-  const canvasView = document.getElementById("canvas-viewport");
-  const listView = document.getElementById("list-viewport");
+  // Conmutador de 3 vistas: Foco Móvil / Lienzo / Lista
+  document.getElementById("btn-view-focus")?.addEventListener("click", () => switchViewMode("focus"));
+  document.getElementById("btn-view-canvas")?.addEventListener("click", () => switchViewMode("canvas"));
+  document.getElementById("btn-view-list")?.addEventListener("click", () => switchViewMode("list"));
 
-  btnCanvas?.addEventListener("click", () => {
-    btnCanvas.classList.add("active");
-    btnList.classList.remove("active");
-    canvasView.classList.remove("hidden");
-    listView.classList.add("hidden");
-  });
-
-  btnList?.addEventListener("click", () => {
-    btnList.classList.add("active");
-    btnCanvas.classList.remove("active");
-    listView.classList.remove("hidden");
-    canvasView.classList.add("hidden");
-  });
-
-  // Botones de acción rápida en la barra superior
-  document.getElementById("btn-quick-add-member")?.addEventListener("click", () => {
+  // Botones de acción rápida en la barra superior (con stopPropagation - Punto 4)
+  document.getElementById("btn-quick-add-member")?.addEventListener("click", (e) => {
+    e.stopPropagation();
     openMemberModal({ mode: "create" });
   });
-  document.getElementById("btn-quick-upload")?.addEventListener("click", () => {
+  document.getElementById("btn-quick-upload")?.addEventListener("click", (e) => {
+    e.stopPropagation();
     openUploadModal(state.selectedMemberId || "abuelo-pat", "photo");
   });
 
@@ -1970,8 +2438,11 @@ function setupSidebarAndToolbarEvents() {
         resultsBox.classList.add("hidden");
         searchInput.value = "";
         clearBtn?.classList.add("hidden");
-        if ( !canvasView.classList.contains("hidden") ) {
+        if (state.viewMode === "canvas") {
           flyToMember(id);
+        } else if (state.viewMode === "focus") {
+          state.focusMemberId = id;
+          renderFocusView();
         } else {
           openMemberDrawer(id);
         }
@@ -2027,14 +2498,6 @@ function setupDrawerEvents() {
   document.getElementById("btn-close-drawer")?.addEventListener("click", closeMemberDrawer);
   document.getElementById("member-drawer-backdrop")?.addEventListener("click", closeMemberDrawer);
 
-  // Botón expandir / contraer altura del panel en móviles (⤢)
-  const toggleExpandDrawer = () => {
-    const drawer = document.getElementById("member-drawer");
-    drawer?.classList.toggle("expanded-full");
-  };
-  document.getElementById("btn-expand-drawer")?.addEventListener("click", toggleExpandDrawer);
-  document.getElementById("drawer-drag-handle")?.addEventListener("click", toggleExpandDrawer);
-
   document.querySelectorAll(".drawer-tab").forEach((tabBtn) => {
     tabBtn.addEventListener("click", () => {
       stopVoicePlayback();
@@ -2067,9 +2530,43 @@ function setupPermissionsModal() {
   const quickSwitcher = document.getElementById("quick-role-switcher");
 
   btnOpen?.addEventListener("click", () => {
+    if (!canCurrentUserEdit()) {
+      showToast("⛔ El panel de Administración y Seguridad es exclusivo para Editores.");
+      return;
+    }
     closeSidebarMenu();
     renderPermissionsModalContent();
     modal.classList.remove("hidden");
+  });
+
+  const formAccessCode = document.getElementById("form-add-access-code");
+  formAccessCode?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!canCurrentUserEdit()) return;
+    const label = document.getElementById("input-new-code-label").value.trim();
+    const code = document.getElementById("input-new-code-pin").value.trim().toUpperCase();
+    const role = document.getElementById("input-new-code-role").value;
+    if (!code) return;
+
+    try {
+      const res = await fetch("/api/family/access-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userEmail: state.currentUserEmail, action: "create", code, label, role })
+      });
+      const json = await res.json();
+      if (json.ok) {
+        getMetadata().accessCodes = json.accessCodes;
+        if (json.historyLog) state.historyLog = json.historyLog;
+      }
+    } catch (_) {
+      const codes = getMetadata().accessCodes || [];
+      codes.push({ code, label, role, createdAt: nowFormatted() });
+      getMetadata().accessCodes = codes;
+    }
+    formAccessCode.reset();
+    renderPermissionsModalContent();
+    showToast(`🔑 Código ${code} creado`);
   });
 
   btnClose?.addEventListener("click", () => modal.classList.add("hidden"));
@@ -2286,6 +2783,59 @@ function renderPermissionsModalContent() {
       showToast(`🗑️ ${target} eliminado`);
     });
   });
+
+  // Lista de Códigos de Invitación para parientes sin cuenta de Google (Punto 8)
+  const codesList = document.getElementById("access-codes-list");
+  const accessCodes = meta.accessCodes || [];
+  if (codesList) {
+    if (accessCodes.length === 0) {
+      codesList.innerHTML = `<div style="font-size:12px;color:var(--ink-muted);">Sin códigos activos.</div>`;
+    } else {
+      codesList.innerHTML = accessCodes
+        .map(
+          (c) => `
+          <div class="perm-item">
+            <div class="perm-email-cell">
+              🔑 <strong>${escapeHTML(c.code)}</strong> · <span class="text-xs text-stone-600">${escapeHTML(c.label)} (${escapeHTML(c.role)})</span>
+            </div>
+            <div class="perm-icon-actions">
+              <button class="perm-icon-btn" title="Copiar enlace directo para WhatsApp" data-copy-code="${escapeHTML(c.code)}">📋</button>
+              ${canEditViewers ? `<button class="perm-icon-btn danger" title="Eliminar código" data-delete-code="${escapeHTML(c.code)}">🗑️</button>` : ""}
+            </div>
+          </div>
+        `
+        )
+        .join("");
+
+      codesList.querySelectorAll("[data-copy-code]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const code = btn.dataset.copyCode;
+          const url = `${window.location.origin}/?codigo=${encodeURIComponent(code)}`;
+          navigator.clipboard?.writeText(`Entrá al Árbol Familiar con este enlace o usando el código ${code}: ${url}`).catch(() => {});
+          showToast(`📋 Enlace con código ${code} copiado`);
+        });
+      });
+
+      codesList.querySelectorAll("[data-delete-code]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const code = btn.dataset.deleteCode;
+          try {
+            const res = await fetch("/api/family/access-codes", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userEmail: state.currentUserEmail, action: "delete", code })
+            });
+            const json = await res.json();
+            if (json.ok) meta.accessCodes = json.accessCodes;
+          } catch (_) {
+            meta.accessCodes = (meta.accessCodes || []).filter((c) => c.code !== code);
+          }
+          renderPermissionsModalContent();
+          showToast(`🗑️ Código ${code} eliminado`);
+        });
+      });
+    }
+  }
 }
 
 async function syncPermissionsWithServer(actionDesc = "Actualizó permisos del lienzo") {
@@ -2323,6 +2873,10 @@ function setupApprovalsModal() {
   const btnClose = document.getElementById("btn-close-approvals-modal");
 
   btnOpen?.addEventListener("click", () => {
+    if (!canCurrentUserEdit()) {
+      showToast("⛔ Acceso restringido a Editores y Co-editores.");
+      return;
+    }
     closeSidebarMenu();
     renderApprovalsModalContent();
     modal.classList.remove("hidden");
@@ -2518,6 +3072,10 @@ function setupHistoryModal() {
   const btnClose = document.getElementById("btn-close-history-modal");
 
   btnOpen?.addEventListener("click", () => {
+    if (!canCurrentUserEdit()) {
+      showToast("⛔ Acceso restringido a Editores y Co-editores.");
+      return;
+    }
     closeSidebarMenu();
     renderHistoryModalContent();
     modal.classList.remove("hidden");
@@ -2597,16 +3155,228 @@ function renderHistoryModalContent() {
 }
 
 /* ==========================================================================
-   MODAL 2: SUBIDA AL DRIVE DEL PROPIETARIO + INTERRUPTOR DE YOUTUBE
+   MOTOR OCR HÍBRIDO (PREPROCESADO EN SERVIDOR + TESSERACT.JS EN ESPAÑOL)
    ========================================================================== */
+function loadTesseractScript() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    script.onload = () => resolve(window.Tesseract);
+    script.onerror = () => reject(new Error("No se pudo cargar el módulo Tesseract.js"));
+    document.head.appendChild(script);
+  });
+}
+
+function cleanOcrText(raw) {
+  if (!raw) return "";
+  return raw
+    .replace(/\r\n/g, "\n")
+    .replace(/-\n([a-záéíóúñ])/gi, "$1")
+    .replace(/([^\n.!?])\n([^\n])/g, "$1 $2")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function runHybridOCR(imageDataUrl, onProgress) {
+  let targetImgUrl = imageDataUrl;
+  let enhancedDataUrl = imageDataUrl;
+  let serverText = "";
+
+  try {
+    onProgress?.(15, "Mejorando contraste de tinta...");
+    const res = await fetch("/api/ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dataUrl: imageDataUrl })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      if (json.enhancedDataUrl) {
+        enhancedDataUrl = json.enhancedDataUrl;
+        targetImgUrl = json.enhancedDataUrl;
+      }
+      if (json.serverOcrUsed && json.serverText) {
+        serverText = json.serverText;
+      }
+    }
+  } catch (_) {}
+
+  if (serverText) {
+    onProgress?.(100, "Texto extraído en el servidor");
+    return { ok: true, text: serverText, enhancedDataUrl, engine: "server-tesseract" };
+  }
+
+  try {
+    onProgress?.(25, "Cargando motor OCR en español...");
+    const Tesseract = await loadTesseractScript();
+    const result = await Tesseract.recognize(targetImgUrl, "spa", {
+      logger: (m) => {
+        if (m.status === "recognizing text" && typeof m.progress === "number") {
+          const pct = Math.min(98, 30 + Math.round(m.progress * 68));
+          onProgress?.(pct, `Reconociendo texto (${Math.round(m.progress * 100)}%)...`);
+        }
+      }
+    });
+    const text = (result?.data?.text || "").trim();
+    onProgress?.(100, text ? "Extracción completada" : "Sin texto claro detectado");
+    return { ok: true, text, enhancedDataUrl, engine: "tesseract.js" };
+  } catch (_) {
+    return {
+      ok: false,
+      text: "",
+      enhancedDataUrl,
+      error: "OCR automático sin conexión externa: compará la vista realzada y escribí o pegá el texto manualmente."
+    };
+  }
+}
+
+/* ==========================================================================
+   MODAL 2: SUBIDA AL DRIVE (FOTOS, CARTAS + OCR OPCIONAL, AUDIOS Y VIDEOS)
+   ========================================================================== */
+function updateAudioTargetOptions(memberId, presetTarget = "bio") {
+  const select = document.getElementById("upload-audio-target");
+  if (!select) return;
+  const member = state.members.find((m) => m.id === memberId);
+  const letters = member?.letters || [];
+  let html = `<option value="bio">📜 Audio para la Biografía de ${escapeHTML(member?.name || "este familiar")}</option>`;
+  letters.forEach((l) => {
+    html += `<option value="letter:${escapeHTML(l.id)}">✉️ Audio para la Carta: ${escapeHTML(l.title)} (${escapeHTML(l.date)})</option>`;
+  });
+  select.innerHTML = html;
+  if (presetTarget && select.querySelector(`option[value="${presetTarget}"]`)) {
+    select.value = presetTarget;
+  }
+}
+
+function setOcrStatusBadge(status, labelOverride = null) {
+  state.ocrStatus = status;
+  const badge = document.getElementById("ocr-status-badge");
+  if (!badge) return;
+  badge.className = "ocr-badge";
+  if (status === "approved") {
+    badge.classList.add("ocr-badge-approved");
+    badge.textContent = labelOverride || "✅ Extracción Aprobada";
+  } else if (status === "pending_review") {
+    badge.classList.add("ocr-badge-pending");
+    badge.textContent = labelOverride || "⏳ Pendiente de revisión";
+  } else if (status === "image_only") {
+    badge.classList.add("ocr-badge-manual");
+    badge.textContent = labelOverride || "🖼️ Texto omitido (solo imagen)";
+  } else {
+    badge.classList.add("ocr-badge-manual");
+    badge.textContent = labelOverride || "Listo para escanear";
+  }
+}
+
+function stopAudioRecordingIfActive() {
+  if (state.recordingTimer) {
+    clearInterval(state.recordingTimer);
+    state.recordingTimer = null;
+  }
+  if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+    try {
+      state.mediaRecorder.stop();
+    } catch (_) {}
+  }
+}
+
+function setupAudioRecorder() {
+  const btnRecord = document.getElementById("btn-record-audio");
+  const timerEl = document.getElementById("audio-record-timer");
+  const previewEl = document.getElementById("audio-record-preview");
+  if (!btnRecord) return;
+
+  btnRecord.addEventListener("click", async () => {
+    if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+      stopAudioRecordingIfActive();
+      btnRecord.textContent = "🔴 Grabar Audio";
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showToast("⚠️ Tu navegador no permite grabar micrófono aquí (usá HTTPS o subí un archivo .mp3/.m4a).");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMime = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
+      const recorder = preferredMime
+        ? new MediaRecorder(stream, { mimeType: preferredMime })
+        : new MediaRecorder(stream);
+
+      state.mediaRecorder = recorder;
+      state.recordingChunks = [];
+      state.recordingSeconds = 0;
+
+      timerEl?.classList.remove("hidden");
+      if (timerEl) timerEl.innerHTML = `<span class="rec-dot"></span> 00:00`;
+      btnRecord.textContent = "⏹ Detener Grabación";
+
+      state.recordingTimer = setInterval(() => {
+        state.recordingSeconds++;
+        const m = String(Math.floor(state.recordingSeconds / 60)).padStart(2, "0");
+        const s = String(state.recordingSeconds % 60).padStart(2, "0");
+        if (timerEl) timerEl.innerHTML = `<span class="rec-dot"></span> ${m}:${s}`;
+      }, 1000);
+
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) state.recordingChunks.push(ev.data);
+      };
+
+      recorder.onstop = () => {
+        clearInterval(state.recordingTimer);
+        state.recordingTimer = null;
+        stream.getTracks().forEach((t) => t.stop());
+
+        const mime = recorder.mimeType || preferredMime || "audio/webm";
+        const blob = new Blob(state.recordingChunks, { type: mime });
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          state.pendingUploadDataUrl = ev.target.result;
+          if (previewEl) {
+            previewEl.src = ev.target.result;
+            previewEl.classList.remove("hidden");
+          }
+          showToast("🎙️ Audio grabado y listo para guardar en Drive");
+        };
+        reader.readAsDataURL(blob);
+      };
+
+      recorder.start();
+    } catch (_) {
+      showToast("⛔ No se pudo acceder al micrófono. Verificá los permisos o subí un archivo.");
+    }
+  });
+}
+
 function setupUploadModal() {
   const modal = document.getElementById("modal-upload");
   const form = document.getElementById("form-upload-media");
+  const memberSelect = document.getElementById("upload-member-select");
   const typeSelect = document.getElementById("upload-type-select");
   const fileInput = document.getElementById("upload-file-input");
+  const letterAudioInput = document.getElementById("upload-letter-audio-input");
   const ytToggle = document.getElementById("upload-youtube-toggle");
   const ytStatusText = document.getElementById("yt-toggle-status-text");
   const submitBtn = document.getElementById("btn-submit-upload");
+
+  const ocrToggle = document.getElementById("upload-ocr-toggle");
+  const ocrWorkspace = document.getElementById("upload-ocr-workspace");
+  const btnRunOcr = document.getElementById("btn-run-ocr");
+  const ocrReviewBox = document.getElementById("ocr-review-box");
+  const ocrProgressWrap = document.getElementById("ocr-progress-bar-wrap");
+  const ocrProgressBar = document.getElementById("ocr-progress-bar");
+  const enhancedWrap = document.getElementById("ocr-enhanced-preview-wrap");
+  const enhancedImg = document.getElementById("ocr-enhanced-preview");
+  const descInput = document.getElementById("upload-desc-input");
+
+  setupAudioRecorder();
 
   document.getElementById("btn-open-upload")?.addEventListener("click", () => {
     closeSidebarMenu();
@@ -2617,10 +3387,17 @@ function setupUploadModal() {
     openUploadModal(state.selectedMemberId || "abuelo-pat", "photo");
   });
 
-  document.getElementById("btn-close-upload-modal")?.addEventListener("click", () => modal.classList.add("hidden"));
-  document.getElementById("btn-cancel-upload")?.addEventListener("click", () => modal.classList.add("hidden"));
+  const closeUpload = () => {
+    stopAudioRecordingIfActive();
+    modal.classList.add("hidden");
+  };
+  document.getElementById("btn-close-upload-modal")?.addEventListener("click", closeUpload);
+  document.getElementById("btn-cancel-upload")?.addEventListener("click", closeUpload);
 
   typeSelect?.addEventListener("change", () => updateUploadModalFields());
+  memberSelect?.addEventListener("change", () => {
+    updateAudioTargetOptions(memberSelect.value);
+  });
 
   ytToggle?.addEventListener("change", () => {
     if (ytToggle.checked) {
@@ -2632,13 +3409,76 @@ function setupUploadModal() {
     }
   });
 
+  ocrToggle?.addEventListener("change", () => {
+    ocrWorkspace?.classList.toggle("hidden", !ocrToggle.checked);
+    if (!ocrToggle.checked) {
+      setOcrStatusBadge("manual");
+    }
+  });
+
+  btnRunOcr?.addEventListener("click", async () => {
+    if (!state.pendingUploadDataUrl || !state.pendingUploadDataUrl.startsWith("data:image")) {
+      showToast("📷 Primero seleccioná una imagen o fotografía de la carta.");
+      return;
+    }
+
+    btnRunOcr.disabled = true;
+    ocrProgressWrap?.classList.remove("hidden");
+    setOcrStatusBadge("pending_review", "⏳ Procesando imagen...");
+
+    const res = await runHybridOCR(state.pendingUploadDataUrl, (pct, statusText) => {
+      if (ocrProgressBar) ocrProgressBar.style.width = `${pct}%`;
+      setOcrStatusBadge("pending_review", statusText);
+    });
+
+    btnRunOcr.disabled = false;
+    ocrReviewBox?.classList.remove("hidden");
+
+    if (res.enhancedDataUrl) {
+      state.pendingEnhancedScanUrl = res.enhancedDataUrl;
+      if (enhancedImg) enhancedImg.src = res.enhancedDataUrl;
+      enhancedWrap?.classList.remove("hidden");
+    }
+
+    if (res.text) {
+      state.ocrRawText = res.text;
+      descInput.value = cleanOcrText(res.text);
+      setOcrStatusBadge("pending_review", "📝 Revisá, corregí y aprobá el texto");
+      showToast("✨ Texto extraído. Corregilo si hace falta y aprobá.");
+    } else {
+      setOcrStatusBadge("pending_review", "✍️ Revisión manual asistida");
+      showToast(res.error || "No se detectó texto claro; podés escribirlo viendo la vista realzada.");
+    }
+  });
+
+  document.getElementById("btn-ocr-clean-lines")?.addEventListener("click", () => {
+    descInput.value = cleanOcrText(descInput.value);
+    showToast("🧹 Saltos de línea corregidos");
+  });
+
+  document.getElementById("btn-ocr-approve")?.addEventListener("click", () => {
+    setOcrStatusBadge("approved");
+    showToast("✅ Extracción OCR marcada como aprobada");
+  });
+
+  document.getElementById("btn-ocr-mark-pending")?.addEventListener("click", () => {
+    setOcrStatusBadge("pending_review");
+    showToast("⏳ Quedará marcada para revisar después");
+  });
+
+  document.getElementById("btn-ocr-skip-text")?.addEventListener("click", () => {
+    descInput.value = "";
+    setOcrStatusBadge("image_only");
+    showToast("🖼️ Texto omitido: se subirá solo la imagen de la carta");
+  });
+
   fileInput?.addEventListener("change", () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) {
       state.pendingUploadDataUrl = null;
       return;
     }
-    const maxFileBytes = 18 * 1024 * 1024; // 18 MB crudos (~24 MB en Base64)
+    const maxFileBytes = 18 * 1024 * 1024;
     if (file.size > maxFileBytes) {
       fileInput.value = "";
       state.pendingUploadDataUrl = null;
@@ -2648,6 +3488,27 @@ function setupUploadModal() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       state.pendingUploadDataUrl = ev.target.result;
+      if (typeSelect.value === "audio") {
+        const previewEl = document.getElementById("audio-record-preview");
+        if (previewEl) {
+          previewEl.src = ev.target.result;
+          previewEl.classList.remove("hidden");
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+
+  letterAudioInput?.addEventListener("change", () => {
+    const file = letterAudioInput.files && letterAudioInput.files[0];
+    if (!file) {
+      state.pendingUploadAudioDataUrl = null;
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      state.pendingUploadAudioDataUrl = ev.target.result;
+      showToast("🎙️ Audio adjuntado a la carta");
     };
     reader.readAsDataURL(file);
   });
@@ -2659,13 +3520,19 @@ function setupUploadModal() {
       return;
     }
 
-    const memberId = document.getElementById("upload-member-select").value;
+    const memberId = memberSelect.value;
     const mediaType = typeSelect.value;
     const title = document.getElementById("upload-title-input").value.trim();
     const date = document.getElementById("upload-date-input").value.trim();
-    const description = document.getElementById("upload-desc-input").value.trim();
+    const description = descInput.value.trim();
     const paperType = document.getElementById("upload-paper-select").value;
     const youtubeUpload = ytToggle.checked;
+    const audioTarget = document.getElementById("upload-audio-target")?.value || "bio";
+
+    if (mediaType === "audio" && !state.pendingUploadDataUrl) {
+      showToast("🎙️ Grabá un audio o elegí un archivo (.mp3, .wav, .m4a) antes de guardar.");
+      return;
+    }
 
     const payload = {
       userEmail: state.currentUserEmail,
@@ -2676,7 +3543,13 @@ function setupUploadModal() {
       description,
       paperType,
       youtubeUpload,
-      dataUrl: state.pendingUploadDataUrl
+      audioTarget,
+      ocrEnabled: Boolean(ocrToggle?.checked),
+      ocrStatus: mediaType === "letter" ? state.ocrStatus : undefined,
+      ocrRawText: state.ocrRawText,
+      enhancedDataUrl: state.pendingEnhancedScanUrl,
+      dataUrl: state.pendingUploadDataUrl,
+      audioDataUrl: state.pendingUploadAudioDataUrl
     };
 
     try {
@@ -2690,6 +3563,9 @@ function setupUploadModal() {
         const idx = state.members.findIndex((m) => m.id === memberId);
         if (idx !== -1) state.members[idx] = json.member;
         if (json.historyLog) state.historyLog = json.historyLog;
+      } else if (json.error) {
+        showToast(`⚠️ ${json.error}`);
+        return;
       }
     } catch (_) {
       const member = state.members.find((m) => m.id === memberId);
@@ -2713,8 +3589,23 @@ function setupUploadModal() {
             location: "Google Drive del Propietario",
             paperType,
             scanImageUrl: state.pendingUploadDataUrl,
+            customAudioUrl: state.pendingUploadAudioDataUrl,
+            ocrEnabled: Boolean(ocrToggle?.checked),
+            ocrStatus: state.ocrStatus,
             paragraphs: description.split(/\n+/).filter(Boolean)
           });
+        } else if (mediaType === "audio") {
+          if (audioTarget.startsWith("letter:")) {
+            const lid = audioTarget.split("letter:", 1)[1];
+            const ltr = (member.letters || []).find((l) => l.id === lid);
+            if (ltr) {
+              ltr.customAudioUrl = state.pendingUploadDataUrl;
+              ltr.customAudioTitle = title;
+            }
+          } else {
+            member.bioAudioUrl = state.pendingUploadDataUrl;
+            member.bioAudioTitle = title;
+          }
         } else if (mediaType === "video") {
           member.videos = member.videos || [];
           member.videos.push({
@@ -2736,13 +3627,22 @@ function setupUploadModal() {
       }
     }
 
+    stopAudioRecordingIfActive();
     state.pendingUploadDataUrl = null;
+    state.pendingUploadAudioDataUrl = null;
+    state.pendingEnhancedScanUrl = null;
+    state.ocrRawText = "";
     modal.classList.add("hidden");
     form.reset();
     renderAll();
     openMemberDrawer(memberId);
 
-    const targetTab = mediaType === "photo" ? "photos" : mediaType === "letter" ? "letters" : "videos";
+    let targetTab = "photos";
+    if (mediaType === "letter") targetTab = "letters";
+    else if (mediaType === "video") targetTab = "videos";
+    else if (mediaType === "audio") {
+      targetTab = audioTarget.startsWith("letter:") ? "letters" : "bio";
+    }
     document.querySelector(`.drawer-tab[data-tab="${targetTab}"]`)?.click();
 
     if (mediaType === "video") {
@@ -2751,13 +3651,15 @@ function setupUploadModal() {
           ? "🎬 Video subido a Drive y precargado en YouTube (Oculto)"
           : "☁️ Video guardado en el Google Drive del propietario"
       );
+    } else if (mediaType === "audio") {
+      showToast("🎙️ Audio guardado en Google Drive correctamente");
     } else {
       showToast("☁️ Material subido al Google Drive del propietario");
     }
   });
 }
 
-function openUploadModal(defaultMemberId, defaultType = "photo") {
+function openUploadModal(defaultMemberId, defaultType = "photo", presetAudioTarget = "bio") {
   if (!canCurrentUserEdit()) {
     showToast("👁️ Estás en Modo Solo Lectura.");
     return;
@@ -2771,8 +3673,32 @@ function openUploadModal(defaultMemberId, defaultType = "photo") {
     .join("");
 
   document.getElementById("upload-type-select").value = defaultType;
+  updateAudioTargetOptions(select.value || defaultMemberId, presetAudioTarget);
+
   state.pendingUploadDataUrl = null;
+  state.pendingUploadAudioDataUrl = null;
+  state.pendingEnhancedScanUrl = null;
+  state.ocrRawText = "";
+  setOcrStatusBadge("manual");
+
   document.getElementById("upload-file-input").value = "";
+  const letterAudioInput = document.getElementById("upload-letter-audio-input");
+  if (letterAudioInput) letterAudioInput.value = "";
+  const previewEl = document.getElementById("audio-record-preview");
+  if (previewEl) {
+    previewEl.src = "";
+    previewEl.classList.add("hidden");
+  }
+  const timerEl = document.getElementById("audio-record-timer");
+  if (timerEl) timerEl.classList.add("hidden");
+
+  const ocrToggle = document.getElementById("upload-ocr-toggle");
+  if (ocrToggle) ocrToggle.checked = false;
+  document.getElementById("upload-ocr-workspace")?.classList.add("hidden");
+  document.getElementById("ocr-review-box")?.classList.add("hidden");
+  document.getElementById("ocr-progress-bar-wrap")?.classList.add("hidden");
+  document.getElementById("ocr-enhanced-preview-wrap")?.classList.add("hidden");
+
   updateUploadModalFields();
   document.getElementById("modal-upload").classList.remove("hidden");
 }
@@ -2780,26 +3706,520 @@ function openUploadModal(defaultMemberId, defaultType = "photo") {
 function updateUploadModalFields() {
   const mediaType = document.getElementById("upload-type-select").value;
   const letterOpts = document.getElementById("upload-letter-options");
+  const audioOpts = document.getElementById("upload-audio-options");
   const videoOpts = document.getElementById("upload-video-options");
   const descLabel = document.getElementById("upload-desc-label");
+  const descInput = document.getElementById("upload-desc-input");
+  const fileInput = document.getElementById("upload-file-input");
+  const dropText = document.getElementById("file-drop-text");
   const submitBtn = document.getElementById("btn-submit-upload");
   const ytToggle = document.getElementById("upload-youtube-toggle");
 
-  letterOpts.classList.toggle("hidden", mediaType !== "letter");
-  videoOpts.classList.toggle("hidden", mediaType !== "video");
+  letterOpts?.classList.toggle("hidden", mediaType !== "letter");
+  audioOpts?.classList.toggle("hidden", mediaType !== "audio");
+  videoOpts?.classList.toggle("hidden", mediaType !== "video");
 
   if (mediaType === "letter") {
-    descLabel.firstChild.textContent = "Transcripción de la carta (separa párrafos con Enter para la voz):";
-    submitBtn.textContent = "☁️ Subir Carta + Activar Voz";
+    if (fileInput) fileInput.accept = "image/*";
+    if (dropText) dropText.innerHTML = "📷 <strong>Elegir foto o escaneo de la carta (opcional para OCR)</strong>";
+    descLabel.firstChild.textContent = "Transcripción / Texto OCR (opcional; podés corregir o dejar solo imagen):";
+    if (descInput) descInput.required = false;
+    submitBtn.textContent = "☁️ Guardar Carta en Drive";
+  } else if (mediaType === "audio") {
+    if (fileInput) fileInput.accept = "audio/*";
+    if (dropText) dropText.innerHTML = "🎙️ <strong>Elegir archivo de audio (.mp3, .wav, .m4a, .ogg) o grabar abajo</strong>";
+    descLabel.firstChild.textContent = "Nota o descripción breve del audio (opcional):";
+    if (descInput) descInput.required = false;
+    submitBtn.textContent = "🎙️ Subir Audio al Drive";
   } else if (mediaType === "video") {
+    if (fileInput) fileInput.accept = "video/*";
+    if (dropText) dropText.innerHTML = "🎬 <strong>Elegir video familiar de tu dispositivo</strong>";
     descLabel.firstChild.textContent = "Descripción o historia de este video:";
+    if (descInput) descInput.required = false;
     submitBtn.textContent = ytToggle.checked
       ? "🎬 Subir a Drive + YouTube"
       : "☁️ Subir solo a Drive";
   } else {
+    if (fileInput) fileInput.accept = "image/*";
+    if (dropText) dropText.innerHTML = "📷 <strong>Elegir fotografía de tu dispositivo</strong>";
     descLabel.firstChild.textContent = "Epígrafe o historia de la fotografía:";
+    if (descInput) descInput.required = true;
     submitBtn.textContent = "☁️ Subir Fotografía a Drive";
   }
+}
+
+/* ==========================================================================
+   MODAL 6: REVISIÓN, CORRECCIÓN Y APROBACIÓN OCR SOBRE CARTAS EXISTENTES
+   ========================================================================== */
+function setupOcrReviewModal() {
+  const modal = document.getElementById("modal-ocr-review");
+  if (!modal) return;
+
+  const btnClose = document.getElementById("btn-close-ocr-review");
+  const btnRerun = document.getElementById("btn-modal-rerun-ocr");
+  const btnClean = document.getElementById("btn-modal-ocr-clean");
+  const btnPending = document.getElementById("btn-modal-ocr-save-pending");
+  const btnApprove = document.getElementById("btn-modal-ocr-approve");
+  const textarea = document.getElementById("ocr-review-textarea");
+  const progressLabel = document.getElementById("ocr-modal-progress");
+
+  btnClose?.addEventListener("click", () => modal.classList.add("hidden"));
+
+  btnClean?.addEventListener("click", () => {
+    textarea.value = cleanOcrText(textarea.value);
+    showToast("🧹 Saltos de línea limpios");
+  });
+
+  btnRerun?.addEventListener("click", async () => {
+    const member = state.members.find((m) => m.id === state.ocrReviewMemberId);
+    const letter = member?.letters?.find((l) => l.id === state.ocrReviewLetterId);
+    const imgSrc = letter?.enhancedScanUrl || letter?.scanImageUrl;
+    if (!imgSrc) {
+      showToast("⚠️ Esta carta no tiene imagen escaneada adjunta para OCR.");
+      return;
+    }
+
+    btnRerun.disabled = true;
+    if (progressLabel) progressLabel.textContent = "Cargando imagen...";
+    try {
+      const resp = await fetch(imgSrc);
+      const blob = await resp.blob();
+      const dataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target.result);
+        reader.readAsDataURL(blob);
+      });
+      const res = await runHybridOCR(dataUrl, (_, msg) => {
+        if (progressLabel) progressLabel.textContent = msg;
+      });
+      if (res.text) {
+        textarea.value = cleanOcrText(res.text);
+        if (progressLabel) progressLabel.textContent = "✨ Listo para revisar y aprobar";
+      } else {
+        if (progressLabel) progressLabel.textContent = res.error || "Sin texto detectado";
+      }
+    } catch (_) {
+      if (progressLabel) progressLabel.textContent = "Error al leer imagen";
+    } finally {
+      btnRerun.disabled = false;
+    }
+  });
+
+  const saveOcrDecision = async (ocrStatus) => {
+    const memberId = state.ocrReviewMemberId;
+    const letterId = state.ocrReviewLetterId;
+    const text = textarea.value.trim();
+
+    try {
+      const res = await fetch("/api/family/update-letter-ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userEmail: state.currentUserEmail,
+          memberId,
+          letterId,
+          text,
+          ocrStatus
+        })
+      });
+      const json = await res.json();
+      if (json.ok && json.member) {
+        const idx = state.members.findIndex((m) => m.id === memberId);
+        if (idx !== -1) state.members[idx] = json.member;
+        if (json.historyLog) state.historyLog = json.historyLog;
+      }
+    } catch (_) {
+      const member = state.members.find((m) => m.id === memberId);
+      const letter = member?.letters?.find((l) => l.id === letterId);
+      if (letter) {
+        letter.paragraphs = text.split("\n").map((s) => s.trim()).filter(Boolean);
+        letter.ocrStatus = ocrStatus;
+      }
+    }
+
+    modal.classList.add("hidden");
+    renderAll();
+    openMemberDrawer(memberId);
+    document.querySelector(`.drawer-tab[data-tab="letters"]`)?.click();
+    showToast(
+      ocrStatus === "approved"
+        ? "✅ Transcripción OCR aprobada y guardada"
+        : "📝 Borrador de transcripción guardado para revisar luego"
+    );
+  };
+
+  btnPending?.addEventListener("click", () => saveOcrDecision("pending_review"));
+  btnApprove?.addEventListener("click", () => saveOcrDecision("approved"));
+}
+
+function openOcrReviewModal(memberId, letterId) {
+  const member = state.members.find((m) => m.id === memberId);
+  const letter = member?.letters?.find((l) => l.id === letterId);
+  if (!member || !letter) return;
+
+  state.ocrReviewMemberId = memberId;
+  state.ocrReviewLetterId = letterId;
+
+  document.getElementById("ocr-review-letter-title").textContent = `${letter.title} (${letter.date}) · ${member.name}`;
+  const pill = document.getElementById("ocr-review-status-pill");
+  if (pill) {
+    pill.className = "ocr-badge";
+    if (letter.ocrStatus === "approved") {
+      pill.classList.add("ocr-badge-approved");
+      pill.textContent = "✅ OCR Aprobado";
+    } else if (letter.ocrStatus === "pending_review") {
+      pill.classList.add("ocr-badge-pending");
+      pill.textContent = "⏳ Pendiente de revisión";
+    } else {
+      pill.classList.add("ocr-badge-manual");
+      pill.textContent = "📝 Edición manual / OCR";
+    }
+  }
+
+  const imgEl = document.getElementById("ocr-review-image");
+  const noImgEl = document.getElementById("ocr-review-no-image");
+  const srcImg = letter.enhancedScanUrl || letter.scanImageUrl;
+  if (srcImg) {
+    imgEl.src = srcImg;
+    imgEl.classList.remove("hidden");
+    noImgEl.classList.add("hidden");
+  } else {
+    imgEl.classList.add("hidden");
+    noImgEl.classList.remove("hidden");
+  }
+
+  document.getElementById("ocr-review-textarea").value = (letter.paragraphs || []).join("\n\n");
+  document.getElementById("ocr-modal-progress").textContent = "";
+  document.getElementById("modal-ocr-review").classList.remove("hidden");
+}
+
+/* ==========================================================================
+   MODAL 7 & 8: COMENTARIOS Y SUGERENCIAS DE LECTORES (PUNTO 6)
+   ========================================================================== */
+function openSubmitCommentModal(presetMemberId = "") {
+  const modal = document.getElementById("modal-submit-comment");
+  const select = document.getElementById("comment-member-select");
+  if (!modal || !select) return;
+
+  select.innerHTML =
+    `<option value="">🌳 General del árbol familiar</option>` +
+    state.members
+      .map((m) => `<option value="${escapeHTML(m.id)}" ${m.id === presetMemberId ? "selected" : ""}>${escapeHTML(m.name)} (${escapeHTML(m.role)})</option>`)
+      .join("");
+
+  const authorInput = document.getElementById("comment-author-input");
+  if (authorInput && !authorInput.value) {
+    authorInput.value = state.currentDisplayName || state.currentUserEmail || "";
+  }
+  modal.classList.remove("hidden");
+}
+
+function setupCommentsModals() {
+  const submitModal = document.getElementById("modal-submit-comment");
+  const inboxModal = document.getElementById("modal-comments-inbox");
+
+  document.getElementById("btn-quick-comment")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openSubmitCommentModal(state.selectedMemberId || "");
+  });
+  document.getElementById("btn-drawer-suggest-comment")?.addEventListener("click", () => {
+    openSubmitCommentModal(state.selectedMemberId || "");
+  });
+  document.getElementById("btn-open-submit-comment")?.addEventListener("click", () => {
+    closeSidebarMenu();
+    openSubmitCommentModal(state.selectedMemberId || "");
+  });
+
+  document.getElementById("btn-close-submit-comment")?.addEventListener("click", () => submitModal?.classList.add("hidden"));
+  document.getElementById("btn-cancel-submit-comment")?.addEventListener("click", () => submitModal?.classList.add("hidden"));
+
+  document.getElementById("form-submit-comment")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const authorName = document.getElementById("comment-author-input").value.trim();
+    const memberId = document.getElementById("comment-member-select").value;
+    const category = document.getElementById("comment-category-select").value;
+    const message = document.getElementById("comment-message-input").value.trim();
+    if (!message) return;
+
+    try {
+      const res = await fetch("/api/family/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          authorName,
+          authorEmail: state.currentUserEmail,
+          memberId,
+          category,
+          message
+        })
+      });
+      const json = await res.json();
+      if (json.ok && json.readerComments) {
+        state.readerComments = json.readerComments;
+      }
+    } catch (_) {
+      const memberObj = state.members.find((m) => m.id === memberId);
+      state.readerComments.unshift({
+        id: `cmt-${Date.now()}`,
+        authorName,
+        memberId,
+        memberName: memberObj?.name || "General del árbol",
+        category,
+        message,
+        status: "pending",
+        createdAt: nowFormatted()
+      });
+    }
+
+    document.getElementById("form-submit-comment").reset();
+    submitModal.classList.add("hidden");
+    updateRoleUI();
+    showToast("📨 Sugerencia enviada a los editores del árbol");
+  });
+
+  document.getElementById("btn-open-comments-inbox")?.addEventListener("click", () => {
+    if (!canCurrentUserEdit()) {
+      showToast("⛔ Solo Editores y Co-editores pueden ver la bandeja de sugerencias.");
+      return;
+    }
+    closeSidebarMenu();
+    renderCommentsInbox();
+    inboxModal?.classList.remove("hidden");
+  });
+  document.getElementById("btn-close-comments-inbox")?.addEventListener("click", () => inboxModal?.classList.add("hidden"));
+}
+
+function renderCommentsInbox() {
+  const container = document.getElementById("comments-inbox-list");
+  if (!container) return;
+  const list = state.readerComments || [];
+  if (list.length === 0) {
+    container.innerHTML = `<div class="bio-story-card text-center text-xs">No hay comentarios ni sugerencias de lectores todavía.</div>`;
+    return;
+  }
+
+  container.innerHTML = list
+    .map(
+      (c) => `
+      <div class="perm-item flex-col items-stretch gap-1.5 p-3">
+        <div class="flex justify-between items-center gap-2 flex-wrap">
+          <span class="role-badge">${escapeHTML(c.category)} · ${escapeHTML(c.memberName)}</span>
+          <span class="text-[11px] text-stone-500">${escapeHTML(c.createdAt)}</span>
+        </div>
+        <div class="text-xs font-bold text-stone-800">De: ${escapeHTML(c.authorName)}</div>
+        <div class="text-xs text-stone-700 bg-white p-2 rounded border border-stone-200">${escapeHTML(c.message)}</div>
+        <div class="flex justify-end gap-2 mt-1">
+          ${
+            c.status === "resolved"
+              ? `<span class="ocr-badge ocr-badge-approved">✅ Resuelto</span>`
+              : `<button class="btn-secondary text-[11px] py-1 px-2" data-resolve-cmt="${escapeHTML(c.id)}">✅ Marcar resuelto</button>`
+          }
+          <button class="btn-ghost text-[11px] py-1 px-2" data-dismiss-cmt="${escapeHTML(c.id)}">🗑️ Descartar</button>
+        </div>
+      </div>
+    `
+    )
+    .join("");
+
+  const handleCommentAction = async (commentId, action) => {
+    try {
+      const res = await fetch("/api/family/comments/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userEmail: state.currentUserEmail, commentId, action })
+      });
+      const json = await res.json();
+      if (json.ok) state.readerComments = json.readerComments;
+    } catch (_) {
+      if (action === "dismiss") {
+        state.readerComments = state.readerComments.filter((c) => c.id !== commentId);
+      } else {
+        const tgt = state.readerComments.find((c) => c.id === commentId);
+        if (tgt) tgt.status = "resolved";
+      }
+    }
+    updateRoleUI();
+    renderCommentsInbox();
+  };
+
+  container.querySelectorAll("[data-resolve-cmt]").forEach((b) =>
+    b.addEventListener("click", () => handleCommentAction(b.dataset.resolveCmt, "resolved"))
+  );
+  container.querySelectorAll("[data-dismiss-cmt]").forEach((b) =>
+    b.addEventListener("click", () => handleCommentAction(b.dataset.dismissCmt, "dismiss"))
+  );
+}
+
+/* ==========================================================================
+   SELECTOR DE FECHAS CON CALENDARIO INTERACTIVO (PUNTO 1)
+   ========================================================================== */
+function formatIsoDateToReadable(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function setupDatePickers() {
+  const bindToggle = (btnId, textId, dateId) => {
+    const btn = document.getElementById(btnId);
+    const textInput = document.getElementById(textId);
+    const dateInput = document.getElementById(dateId);
+    if (!btn || !textInput || !dateInput) return;
+
+    btn.addEventListener("click", () => {
+      const usingCalendar = dateInput.classList.contains("hidden");
+      dateInput.classList.toggle("hidden", !usingCalendar);
+      textInput.classList.toggle("hidden", usingCalendar);
+      btn.textContent = usingCalendar ? "🔢 Solo año / texto" : "📅 Calendario";
+    });
+
+    dateInput.addEventListener("change", () => {
+      if (dateInput.value) {
+        textInput.value = formatIsoDateToReadable(dateInput.value);
+      }
+    });
+  };
+
+  bindToggle("btn-toggle-birth-mode", "member-birth-input", "member-birth-date");
+  bindToggle("btn-toggle-death-mode", "member-death-input", "member-death-date");
+  bindToggle("btn-toggle-upload-date-mode", "upload-date-input", "upload-date-picker");
+
+  const aliveCheck = document.getElementById("member-alive-check");
+  const deathText = document.getElementById("member-death-input");
+  const deathDate = document.getElementById("member-death-date");
+  aliveCheck?.addEventListener("change", () => {
+    if (aliveCheck.checked) {
+      if (deathText) deathText.value = "Presente";
+      if (deathDate) deathDate.value = "";
+    } else if (deathText && deathText.value === "Presente") {
+      deathText.value = "";
+    }
+  });
+}
+
+/* ==========================================================================
+   RETRATO CIRCULAR CON ENCUADRE FACIAL CENTRADO (PUNTO 5)
+   ========================================================================== */
+function drawAvatarCropCanvas() {
+  const canvas = document.getElementById("avatar-crop-canvas");
+  if (!canvas || !state.avatarCrop.img) return;
+  const ctx = canvas.getContext("2d");
+  const img = state.avatarCrop.img;
+  const size = canvas.width;
+
+  ctx.clearRect(0, 0, size, size);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.clip();
+
+  const baseScale = Math.max(size / img.width, size / img.height);
+  const scale = baseScale * state.avatarCrop.zoom;
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+  const x = (size - drawW) / 2 + state.avatarCrop.offsetX;
+  const y = (size - drawH) / 2 + state.avatarCrop.offsetY;
+
+  ctx.drawImage(img, x, y, drawW, drawH);
+  ctx.restore();
+}
+
+function getCroppedAvatarDataUrl() {
+  if (!state.avatarCrop.img || !state.avatarCrop.modified) return null;
+  const out = document.createElement("canvas");
+  out.width = 240;
+  out.height = 240;
+  const ctx = out.getContext("2d");
+  const img = state.avatarCrop.img;
+  const size = 240;
+  const ratio = size / 140;
+
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.clip();
+
+  const baseScale = Math.max(size / img.width, size / img.height);
+  const scale = baseScale * state.avatarCrop.zoom;
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+  const x = (size - drawW) / 2 + state.avatarCrop.offsetX * ratio;
+  const y = (size - drawH) / 2 + state.avatarCrop.offsetY * ratio;
+
+  ctx.drawImage(img, x, y, drawW, drawH);
+  return out.toDataURL("image/jpeg", 0.88);
+}
+
+function setupAvatarCropper() {
+  const fileInput = document.getElementById("member-avatar-file");
+  const controls = document.getElementById("avatar-crop-controls");
+  const canvas = document.getElementById("avatar-crop-canvas");
+  const zoomSlider = document.getElementById("avatar-crop-zoom");
+  const btnCenter = document.getElementById("btn-avatar-center");
+  const btnClear = document.getElementById("btn-avatar-clear");
+
+  fileInput?.addEventListener("change", () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        state.avatarCrop = {
+          img,
+          zoom: 1.15,
+          offsetX: 0,
+          offsetY: 0,
+          dragging: false,
+          startX: 0,
+          startY: 0,
+          modified: true
+        };
+        if (zoomSlider) zoomSlider.value = "1.15";
+        controls?.classList.remove("hidden");
+        drawAvatarCropCanvas();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  zoomSlider?.addEventListener("input", () => {
+    state.avatarCrop.zoom = parseFloat(zoomSlider.value) || 1;
+    state.avatarCrop.modified = true;
+    drawAvatarCropCanvas();
+  });
+
+  btnCenter?.addEventListener("click", () => {
+    state.avatarCrop.offsetX = 0;
+    state.avatarCrop.offsetY = 0;
+    state.avatarCrop.zoom = 1.25;
+    if (zoomSlider) zoomSlider.value = "1.25";
+    state.avatarCrop.modified = true;
+    drawAvatarCropCanvas();
+  });
+
+  btnClear?.addEventListener("click", () => {
+    state.avatarCrop.img = null;
+    state.avatarCrop.modified = false;
+    if (fileInput) fileInput.value = "";
+    controls?.classList.add("hidden");
+  });
+
+  canvas?.addEventListener("pointerdown", (e) => {
+    state.avatarCrop.dragging = true;
+    state.avatarCrop.startX = e.clientX - state.avatarCrop.offsetX;
+    state.avatarCrop.startY = e.clientY - state.avatarCrop.offsetY;
+  });
+  window.addEventListener("pointermove", (e) => {
+    if (!state.avatarCrop.dragging) return;
+    state.avatarCrop.offsetX = e.clientX - state.avatarCrop.startX;
+    state.avatarCrop.offsetY = e.clientY - state.avatarCrop.startY;
+    state.avatarCrop.modified = true;
+    drawAvatarCropCanvas();
+  });
+  window.addEventListener("pointerup", () => {
+    state.avatarCrop.dragging = false;
+  });
 }
 
 /* ==========================================================================
@@ -2961,6 +4381,8 @@ function setupMemberModal() {
       }
     }
 
+    const avatarDataUrl = getCroppedAvatarDataUrl();
+
     const memberPayload = {
       id: existingId || `familiar-${Date.now()}`,
       name,
@@ -2979,6 +4401,10 @@ function setupMemberModal() {
       parentIds,
       avatarColor,
       avatarInitials,
+      avatarUrl: existingMember?.avatarUrl || null,
+      bioAudioUrl: existingMember?.bioAudioUrl || null,
+      bioAudioTitle: existingMember?.bioAudioTitle || null,
+      bioAudioSizeKB: existingMember?.bioAudioSizeKB || null,
       voiceProfile: {
         pitch: 1.0,
         rate: 0.94,
@@ -3035,7 +4461,8 @@ function setupMemberModal() {
         body: JSON.stringify({
           userEmail: state.currentUserEmail,
           member: memberPayload,
-          childrenIds
+          childrenIds,
+          avatarDataUrl
         })
       });
       const json = await res.json();
@@ -3163,6 +4590,12 @@ function openMemberModal(opts = {}) {
   c2Select.innerHTML = optionsHTML;
   if (partnershipsListEl) partnershipsListEl.innerHTML = "";
 
+  // Reiniciar recortador circular de retrato (Punto 5)
+  state.avatarCrop = { img: null, zoom: 1, offsetX: 0, offsetY: 0, dragging: false, startX: 0, startY: 0, modified: false };
+  const avatarFile = document.getElementById("member-avatar-file");
+  if (avatarFile) avatarFile.value = "";
+  document.getElementById("avatar-crop-controls")?.classList.add("hidden");
+
   if (opts.mode === "edit" && member) {
     titleEl.textContent = `✏️ Editar a ${member.name}`;
     document.getElementById("member-id-input").value = member.id;
@@ -3174,6 +4607,8 @@ function openMemberModal(opts = {}) {
     document.getElementById("member-color-select").value = member.avatarColor || "#8C5A3C";
     document.getElementById("member-birth-input").value = member.birthYear || "";
     document.getElementById("member-death-input").value = member.deathYear || "Presente";
+    const aliveCheck = document.getElementById("member-alive-check");
+    if (aliveCheck) aliveCheck.checked = (member.deathYear || "Presente") === "Presente";
     document.getElementById("member-place-input").value = member.birthPlace || "";
     document.getElementById("member-job-input").value = member.occupation || "";
     document.getElementById("member-bio-input").value = member.bio || "";
