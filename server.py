@@ -6,6 +6,7 @@ Puerto por defecto: 8765
 """
 
 import base64
+import copy
 import io
 import json
 import os
@@ -15,6 +16,7 @@ import socket
 import subprocess
 import threading
 import time
+import uuid
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -131,12 +133,12 @@ def save_family_data(data):
 
 
 def get_user_role(data, user_email):
-    if not user_email:
-        return "Propietario"
+    if not user_email or not str(user_email).strip():
+        return "Lector"
     meta = data.get("metadata", {})
     owner = (meta.get("ownerEmail") or "martin.alvarez@gmail.com").lower()
     co_editors = [e.lower() for e in meta.get("coEditors", [])]
-    clean = user_email.strip().lower()
+    clean = str(user_email).strip().lower()
     if clean == owner:
         return "Propietario"
     if clean in co_editors:
@@ -147,6 +149,15 @@ def get_user_role(data, user_email):
             if (c.get("code") or "").strip().upper() == code_val:
                 return c.get("role") or "Lector"
     return "Lector"
+
+
+def sanitize_public_family_data(data, requester_email=""):
+    """Oculta códigos de invitación privados a usuarios no editores o sin sesión."""
+    clean_data = copy.deepcopy(data)
+    if not can_user_edit(data, requester_email):
+        meta = clean_data.get("metadata", {})
+        meta.pop("accessCodes", None)
+    return clean_data
 
 
 def can_user_edit(data, user_email):
@@ -440,8 +451,12 @@ def save_data_url_file(data_url, subfolder, prefix="archivo"):
 
     mime_type = match.group(1).strip().lower()
     b64_data = match.group(2)
-    raw_bytes = base64.b64decode(b64_data)
+    try:
+        raw_bytes = base64.b64decode(b64_data, validate=True)
+    except Exception:
+        return None, 0
 
+    safe_prefix = re.sub(r"[^a-zA-Z0-9_-]", "", str(prefix or "archivo"))[:48] or "archivo"
     ext_map = {
         "image/jpeg": ".jpg",
         "image/png": ".png",
@@ -465,7 +480,7 @@ def save_data_url_file(data_url, subfolder, prefix="archivo"):
     target_dir = UPLOADS_DIR / subfolder
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{prefix}-{int(time.time() * 1000)}{ext}"
+    filename = f"{safe_prefix}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:6]}{ext}"
     file_path = target_dir / filename
     with open(file_path, "wb") as f:
         f.write(raw_bytes)
@@ -581,15 +596,25 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/family":
+            qs = parse_qs(parsed.query)
+            req_user = (qs.get("userEmail", [""])[0] or self.headers.get("X-User-Email") or "").strip()
             data = load_family_data()
-            return self._send_json(data)
+            return self._send_json(sanitize_public_family_data(data, req_user))
+
+        if parsed.path == "/api/family/access-codes":
+            qs = parse_qs(parsed.query)
+            req_user = (qs.get("userEmail", [""])[0] or self.headers.get("X-User-Email") or "").strip()
+            data = load_family_data()
+            if not can_user_edit(data, req_user):
+                return self._send_json({"ok": False, "error": "Sin permisos administrativos."}, 403)
+            return self._send_json({"ok": True, "accessCodes": data.get("metadata", {}).get("accessCodes", [])})
 
         if parsed.path == "/api/family/comments":
             data = load_family_data()
             return self._send_json({"ok": True, "comments": data.get("readerComments", [])})
 
         if parsed.path == "/fallback-data.js":
-            data = load_family_data()
+            data = sanitize_public_family_data(load_family_data(), "")
             js_body = f"window.FALLBACK_FAMILY_DATA = {json.dumps(data, ensure_ascii=False)};\n".encode(
                 "utf-8"
             )
@@ -727,9 +752,9 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
             return self._send_json({"ok": True, "updated": len(positions)})
 
         # 3. Ordenar geométricamente el tablero SIN borrar parientes nuevos
-        if parsed.path in ("/api/family/tidy", "/api/family/reset"):
+        if parsed.path == "/api/family/tidy":
             body = self._read_body_json()
-            user_email = body.get("userEmail") or "martin.alvarez@gmail.com"
+            user_email = (body.get("userEmail") or "").strip()
             data = load_family_data()
             if not can_user_edit(data, user_email):
                 return self._send_json({"ok": False, "error": "Modo solo lectura"}, 403)
@@ -756,7 +781,7 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         # 5. Subida unificada de Material al Drive del Propietario / YouTube / Audios / Cartas + OCR
         if parsed.path == "/api/family/upload":
             body = self._read_body_json()
-            user_email = body.get("userEmail") or "martin.alvarez@gmail.com"
+            user_email = (body.get("userEmail") or "").strip()
             data = load_family_data()
             if not can_user_edit(data, user_email):
                 return self._send_json({"ok": False, "error": "Sin permiso de edición"}, 403)
@@ -941,7 +966,7 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         # 5b. Corregir y/o Aprobar texto OCR de una carta existente
         if parsed.path == "/api/family/update-letter-ocr":
             body = self._read_body_json()
-            user_email = body.get("userEmail") or "martin.alvarez@gmail.com"
+            user_email = (body.get("userEmail") or "").strip()
             data = load_family_data()
             if not can_user_edit(data, user_email):
                 return self._send_json({"ok": False, "error": "Sin permiso de edición"}, 403)
@@ -985,7 +1010,7 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         # 6. Crear o actualizar un familiar (con foto circular de retrato si se envía avatarDataUrl)
         if parsed.path == "/api/family/member":
             body = self._read_body_json()
-            user_email = body.get("userEmail") or "martin.alvarez@gmail.com"
+            user_email = (body.get("userEmail") or "").strip()
             data = load_family_data()
             if not can_user_edit(data, user_email):
                 return self._send_json({"ok": False, "error": "Sin permiso de edición"}, 403)
@@ -995,6 +1020,9 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
             avatar_data_url = body.get("avatarDataUrl")
             if not updated_member or not updated_member.get("id"):
                 return self._send_json({"ok": False, "error": "Familiar inválido"}, 400)
+            updated_member["id"] = re.sub(r"[^a-zA-Z0-9_-]", "", str(updated_member["id"]))[:64]
+            if not updated_member["id"]:
+                return self._send_json({"ok": False, "error": "ID de familiar inválido"}, 400)
 
             if avatar_data_url:
                 avatar_url, _ = save_data_url_file(
@@ -1144,11 +1172,11 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
         # 8. Comentarios y sugerencias de lectores para editores/co-editores
         if parsed.path == "/api/family/comments":
             body = self._read_body_json()
-            author_name = (body.get("authorName") or "Familiar Lector").strip()
-            author_email = (body.get("authorEmail") or "").strip()
-            member_id = (body.get("memberId") or "").strip()
-            category = (body.get("category") or "Sugerencia").strip()
-            message = (body.get("message") or "").strip()
+            author_name = (body.get("authorName") or "Familiar Lector").strip()[:80]
+            author_email = (body.get("authorEmail") or "").strip()[:120]
+            member_id = (body.get("memberId") or "").strip()[:64]
+            category = (body.get("category") or "Sugerencia").strip()[:60]
+            message = (body.get("message") or "").strip()[:1000]
 
             if not message:
                 return self._send_json({"ok": False, "error": "El mensaje no puede estar vacío."}, 400)
@@ -1166,7 +1194,9 @@ class FamilyTreeHandler(SimpleHTTPRequestHandler):
                 "status": "pending",
                 "createdAt": now_str(),
             }
-            data.setdefault("readerComments", []).insert(0, comment_obj)
+            comments = data.setdefault("readerComments", [])
+            comments.insert(0, comment_obj)
+            data["readerComments"] = comments[:200]
             add_history_entry(
                 data,
                 author_email or author_name,

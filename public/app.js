@@ -352,7 +352,7 @@ function renderSidebarRoleSwitcher() {
 
 async function fetchFamilyTree() {
   try {
-    const res = await fetch("/api/family");
+    const res = await fetch(`/api/family?userEmail=${encodeURIComponent(state.currentUserEmail || "")}`);
     if (!res.ok) throw new Error("API local no disponible");
     const data = await res.json();
     state.familyData = data;
@@ -1303,9 +1303,12 @@ function openMemberDrawer(memberId) {
   stopVoicePlayback();
   state.selectedMemberId = memberId;
   state.focusMemberId = memberId;
-  renderNodes();
-  renderMinimap();
-  renderFocusView();
+  if (state.viewMode === "canvas") {
+    renderNodes();
+    renderMinimap();
+  } else if (state.viewMode === "focus") {
+    renderFocusView();
+  }
 
   const member = state.members.find((m) => m.id === memberId);
   if (!member) return;
@@ -2203,6 +2206,11 @@ function switchViewMode(mode) {
   listView?.classList.toggle("hidden", mode !== "list");
 
   if (mode === "focus") renderFocusView();
+  else if (mode === "list") renderCompactListView();
+  else {
+    renderNodes();
+    renderMinimap();
+  }
 }
 
 /* ==========================================================================
@@ -2529,12 +2537,19 @@ function setupPermissionsModal() {
   const formViewer = document.getElementById("form-add-viewer");
   const quickSwitcher = document.getElementById("quick-role-switcher");
 
-  btnOpen?.addEventListener("click", () => {
+  btnOpen?.addEventListener("click", async () => {
     if (!canCurrentUserEdit()) {
       showToast("⛔ El panel de Administración y Seguridad es exclusivo para Editores.");
       return;
     }
     closeSidebarMenu();
+    try {
+      const res = await fetch(`/api/family/access-codes?userEmail=${encodeURIComponent(state.currentUserEmail)}`);
+      const json = await res.json();
+      if (json.ok && Array.isArray(json.accessCodes)) {
+        getMetadata().accessCodes = json.accessCodes;
+      }
+    } catch (_) {}
     renderPermissionsModalContent();
     modal.classList.remove("hidden");
   });
@@ -3700,6 +3715,7 @@ function openUploadModal(defaultMemberId, defaultType = "photo", presetAudioTarg
   document.getElementById("ocr-enhanced-preview-wrap")?.classList.add("hidden");
 
   updateUploadModalFields();
+  resetDateFieldMode("btn-toggle-upload-date-mode", "upload-date-input", "upload-date-picker");
   document.getElementById("modal-upload").classList.remove("hidden");
 }
 
@@ -4059,6 +4075,18 @@ function formatIsoDateToReadable(iso) {
   return `${d}/${m}/${y}`;
 }
 
+function resetDateFieldMode(btnId, textId, dateId) {
+  const btn = document.getElementById(btnId);
+  const textInput = document.getElementById(textId);
+  const dateInput = document.getElementById(dateId);
+  if (textInput) textInput.classList.remove("hidden");
+  if (dateInput) {
+    dateInput.classList.add("hidden");
+    dateInput.value = "";
+  }
+  if (btn) btn.textContent = "📅 Calendario";
+}
+
 function setupDatePickers() {
   const bindToggle = (btnId, textId, dateId) => {
     const btn = document.getElementById(btnId);
@@ -4206,6 +4234,7 @@ function setupAvatarCropper() {
   });
 
   canvas?.addEventListener("pointerdown", (e) => {
+    canvas.setPointerCapture?.(e.pointerId);
     state.avatarCrop.dragging = true;
     state.avatarCrop.startX = e.clientX - state.avatarCrop.offsetX;
     state.avatarCrop.startY = e.clientY - state.avatarCrop.offsetY;
@@ -4475,6 +4504,7 @@ function setupMemberModal() {
         else state.members.push(memberPayload);
       }
     } catch (_) {
+      if (avatarDataUrl) memberPayload.avatarUrl = avatarDataUrl;
       const idx = state.members.findIndex((m) => m.id === memberPayload.id);
       if (idx !== -1) state.members[idx] = memberPayload;
       else state.members.push(memberPayload);
@@ -4590,11 +4620,13 @@ function openMemberModal(opts = {}) {
   c2Select.innerHTML = optionsHTML;
   if (partnershipsListEl) partnershipsListEl.innerHTML = "";
 
-  // Reiniciar recortador circular de retrato (Punto 5)
+  // Reiniciar recortador circular de retrato (Punto 5) y selectores de fecha (Punto 1)
   state.avatarCrop = { img: null, zoom: 1, offsetX: 0, offsetY: 0, dragging: false, startX: 0, startY: 0, modified: false };
   const avatarFile = document.getElementById("member-avatar-file");
   if (avatarFile) avatarFile.value = "";
   document.getElementById("avatar-crop-controls")?.classList.add("hidden");
+  resetDateFieldMode("btn-toggle-birth-mode", "member-birth-input", "member-birth-date");
+  resetDateFieldMode("btn-toggle-death-mode", "member-death-input", "member-death-date");
 
   if (opts.mode === "edit" && member) {
     titleEl.textContent = `✏️ Editar a ${member.name}`;

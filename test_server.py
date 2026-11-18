@@ -140,6 +140,31 @@ class FamilyTreeServerTests(unittest.TestCase):
                 base_url = f"http://127.0.0.1:{port}"
 
                 try:
+                    # 0. Verificar que GET /api/family sin sesión oculta accessCodes
+                    with urllib.request.urlopen(f"{base_url}/api/family", timeout=5) as resp:
+                        pub_data = json.loads(resp.read().decode())
+                    self.assertNotIn("accessCodes", pub_data.get("metadata", {}))
+
+                    # 0b. Verificar que userEmail vacío no otorga rol Propietario (403)
+                    req_empty_auth = urllib.request.Request(
+                        f"{base_url}/api/family/delete-member",
+                        data=json.dumps({"userEmail": "", "memberId": "abuelo-pat"}).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as ctx_empty:
+                        urllib.request.urlopen(req_empty_auth, timeout=5)
+                    self.assertEqual(ctx_empty.exception.code, 403)
+
+                    # 0c. Verificar sanitización de prefijo y base64 inválido en save_data_url_file
+                    bad_url, bad_kb = server.save_data_url_file("data:image/jpeg;base64,!!!NOTBASE64!!!", "drive_fotos")
+                    self.assertIsNone(bad_url)
+                    self.assertEqual(bad_kb, 0)
+                    safe_url, _ = server.save_data_url_file(
+                        "data:image/png;base64,iVBORw0KGgo=", "drive_fotos", "../../evil"
+                    )
+                    self.assertTrue(safe_url.startswith("./uploads/drive_fotos/evil-"))
+
                     # 1. Preprocesado OCR
                     img = Image.new("RGB", (400, 120), "#f3e8d2")
                     ImageDraw.Draw(img).text((20, 40), "Carta 1965", fill="#251e19")
@@ -221,6 +246,37 @@ class FamilyTreeServerTests(unittest.TestCase):
                         pin_res = json.loads(resp.read().decode())
                     self.assertTrue(pin_res["ok"])
                     self.assertEqual(pin_res["role"], "Lector")
+
+                    # 5. Co-editor no puede crear código Co-editor (se degrada a Lector) ni editar coEditors (403)
+                    req_code_co = urllib.request.Request(
+                        f"{base_url}/api/family/access-codes",
+                        data=json.dumps({
+                            "userEmail": "elena.conti@gmail.com",
+                            "action": "create",
+                            "code": "PRUEBA-99",
+                            "label": "Test",
+                            "role": "Co-editor",
+                        }).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req_code_co, timeout=5) as resp:
+                        code_res = json.loads(resp.read().decode())
+                    created = [c for c in code_res["accessCodes"] if c["code"] == "PRUEBA-99"][0]
+                    self.assertEqual(created["role"], "Lector")
+
+                    req_perm_co = urllib.request.Request(
+                        f"{base_url}/api/family/permissions",
+                        data=json.dumps({
+                            "requesterEmail": "elena.conti@gmail.com",
+                            "coEditors": ["otro@gmail.com"],
+                        }).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as ctx_perm:
+                        urllib.request.urlopen(req_perm_co, timeout=5)
+                    self.assertEqual(ctx_perm.exception.code, 403)
                 finally:
                     httpd.shutdown()
 
