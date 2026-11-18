@@ -92,3 +92,69 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 - **Archivos involucrados:**
   - `server.py` (emisión y validación de códigos de invitación / tokens firmados)
   - `public/index.html`, `public/app.js` (pantalla de ingreso unificada: Google o Código Familiar / PIN)
+
+---
+
+## 9. Visor de fotos en tamaño completo con zoom, edición/sugerencias y descarga original (solo Google)
+- **Estado:** `[ ] Pendiente`
+- **Descripción:**
+  - Verificar e implementar un visor modal (*lightbox*) para ver las fotografías cargadas en tamaño completo y hacer zoom (pellizco táctil o botones `+`/`−`).
+  - Agregar en cada foto una opción de **"Añadir/modificar información"** disponible tanto para editores (edición directa) como para lectores (se envía automáticamente como **Sugerencia de lector**).
+  - Habilitar el botón de **"Descargar foto en tamaño original"** únicamente para usuarios autenticados con **cuenta de Google** (los usuarios que ingresaron solo con Código/PIN no podrán descargar por el momento).
+  - Registrar toda modificación, sugerencia o descarga en el historial/registro.
+- **Archivos involucrados:**
+  - `public/index.html`, `public/styles.css`, `public/app.js`, `server.py`
+
+---
+
+## 10. Soporte de documentos (PDF, Word, Google Docs, LibreOffice/ODT) para OCR y enlace externo
+- **Estado:** `[ ] Pendiente`
+- **Descripción:**
+  - Ampliar los formatos aceptados para carga y procesamiento (opcional) con OCR, sumando a las imágenes: **PDF** (`.pdf`), **MS Word** (`.doc`, `.docx`), **LibreOffice/OpenOffice** (`.odt`) y exportaciones/enlaces de **Google Docs**.
+  - Evaluar e implementar un modo para **enlazar un documento desde una fuente externa** (por ejemplo, un enlace de Google Docs) directamente en la ficha o carta del familiar.
+- **Archivos involucrados:**
+  - `server.py` (`pdftotext` / extracción de texto de `.docx` y `.odt` + validación de enlaces externos)
+  - `public/index.html`, `public/app.js`
+
+---
+
+## 11. Ir al pariente o zona del mapa directamente desde la bandeja de sugerencias
+- **Estado:** `[ ] Pendiente`
+- **Descripción:** Cada entrada en la bandeja de **Sugerencias de Lectores** debe incluir un botón o acceso rápido (ej. `🎯 Ir al familiar` / `🗺️ Ver en el mapa`) que cierre el modal y lleve la cámara (o el modo *Familiar Foco*) directamente al pariente o zona del lienzo donde se sugirió la modificación.
+- **Archivos involucrados:**
+  - `public/app.js` (`renderCommentsInbox()`, `flyToMember()`, `renderFocusView()`)
+
+---
+
+## 12. Registro obligatorio en historial de decisiones de co-editores sobre sugerencias
+- **Estado:** `[ ] Pendiente`
+- **Descripción:** Evitar que los co-editores puedan marcar sugerencias como aprobadas o eliminarlas sin dejar rastro para el propietario del árbol. Todas las decisiones que toman los **co-editores** (aprobar, resolver o descartar sugerencias) deben quedar registradas en el historial de modificaciones; las acciones del **propietario** no requieren registrarse en esa auditoría.
+- **Archivos involucrados:**
+  - `server.py` (`/api/family/comments/resolve` registrando `add_history_entry` cuando el actor sea `Co-editor`)
+  - `public/app.js` (`renderCommentsInbox()`, `renderHistoryModalContent()`)
+
+---
+
+## 13. Pasar automáticamente la nupcia anterior a "Ex-pareja" al agregar una (n+1) nupcia
+- **Estado:** `[ ] Pendiente`
+- **Descripción:** Al agregar una `(n+1)` nupcia con estado actual (`♥`) a un familiar que ya tenía una pareja actual previa, la nupcia anterior debe pasar automáticamente a estado **"Ex-pareja" (`♡`)**, de modo que un mismo pariente no figure "casado" con varias personas simultáneamente, manteniendo su línea conectada con la última nupcia.
+- **Archivos involucrados:**
+  - `server.py` (`sync_member_into_tree()`)
+  - `public/app.js` (`setupMemberModal()`, `appendPartnershipRow()`)
+
+---
+
+## 14. Validar que no se agreguen parientes con fecha de nacimiento futura
+- **Estado:** `[ ] Pendiente`
+- **Descripción:** Impedir crear o guardar un familiar cuya fecha (o año) de nacimiento sea posterior a la fecha actual del sistema, tanto en el selector de calendario como en el ingreso manual de año/texto.
+- **Archivos involucrados:**
+  - `public/app.js` (`setupMemberModal()`, `setupDatePickers()`)
+  - `server.py` (`POST /api/family/member`)
+
+---
+
+## 15. Mostrar advertencias de campos vacíos o incompletos en versión móvil
+- **Estado:** `[ ] Pendiente`
+- **Descripción:** En la versión móvil actualmente no se visualizan con claridad las advertencias cuando se dejan campos obligatorios vacíos o incompletos al enviar formularios. Reemplazar/complementar la validación nativa oculta del navegador con mensajes visibles en pantalla y desplazamiento automático al campo faltante.
+- **Archivos involucrados:**
+  - `public/app.js`, `public/styles.css`, `public/index.html`
