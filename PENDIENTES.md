@@ -158,3 +158,12 @@ Este documento reúne las mejoras, correcciones y definiciones de diseño pendie
 - **Descripción:** En la versión móvil actualmente no se visualizan con claridad las advertencias cuando se dejan campos obligatorios vacíos o incompletos al enviar formularios. Reemplazar/complementar la validación nativa oculta del navegador con mensajes visibles en pantalla y desplazamiento automático al campo faltante.
 - **Archivos involucrados:**
   - `public/app.js`, `public/styles.css`, `public/index.html`
+
+---
+
+## 16. Vencimiento temporal de códigos de acceso sin cuenta de Google (máximo 30 días)
+- **Estado:** `[ ] Pendiente`
+- **Descripción:** Establecer que todos los códigos de acceso / PIN familiares generados para ingresar sin cuenta de Google sean temporales, con una vigencia máxima de **30 días** desde su emisión. Permitir configurar la duración (con tope de 30 días), mostrar la fecha de vencimiento en el panel de administración y rechazar el acceso (tanto en el ingreso como en sesiones activas) una vez vencido el código.
+- **Archivos involucrados:**
+  - `server.py` (`POST /api/family/access-codes`, `POST /api/family/auth-code`, `get_user_role()`)
+  - `public/index.html`, `public/app.js` (creación y listado de códigos en el panel de administración)
